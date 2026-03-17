@@ -11,18 +11,15 @@ This file provides guidelines for agentic coding agents working on Hippo.
 uv sync
 uv sync --all-extras    # with dev dependencies
 
-# Linting and formatting
-uv run ruff check .
-uv run ruff format .
+# Using Makefile
+make test              # Run CLI tests
+make clean             # Remove generated files and cache
+make lint              # Run linter
+make format            # Format code
 
-# Type checking
-uv run pyright
-
-# Running tests
-uv run pytest                 # all tests
-uv run pytest -v              # verbose
-uv run pytest tests/test_models.py -v   # single test file
-uv run pytest -k test_node    # tests matching pattern
+# Manual commands
+uv run ruff check src/
+uv run ruff format src/
 
 # CLI help
 uv run hippo --help
@@ -82,7 +79,6 @@ from typing import Optional
 
 # Third-party
 import click
-from pydantic import BaseModel
 
 # Local
 from hippo.models import Node, Cluster
@@ -198,18 +194,14 @@ class GraphStore:
 
 ### 5.1 CLI Layer (user-facing)
 
-- Print concise error messages to stderr
-- Exit with non-zero code on failure
+- Let exceptions bubble up - don't catch just to log
+- CLI boundary catches and prints errors to stderr with non-zero exit code
 - Provide helpful hints when applicable
 
 ```python
 @click.command()
 def add_node(...):
-    try:
-        store.add_node(node)
-    except ValueError as e:
-        click.echo(f"Error: {e}", err=True)
-        raise SystemExit(1)
+    store.add_node(node)
 ```
 
 ### 5.2 Library Layer
