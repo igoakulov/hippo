@@ -1,4 +1,42 @@
+import json
 from dataclasses import dataclass
+from pathlib import Path
+
+
+def get_clusters_path() -> Path:
+    from hippo.directories import get_hippo_dir
+
+    return get_hippo_dir() / "clusters.json"
+
+
+def save_clusters(clusters: list["Cluster"]) -> None:
+    path = get_clusters_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {"clusters": [c.to_dict() for c in clusters]}
+    path.write_text(json.dumps(data, indent=2))
+
+
+def load_clusters() -> list["Cluster"]:
+    path = get_clusters_path()
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text())
+        return [Cluster.from_dict(c) for c in data.get("clusters", [])]
+    except (json.JSONDecodeError, IOError):
+        return []
+
+
+def merge_clusters(inferred: list["Cluster"]) -> list["Cluster"]:
+    existing = {c.id: c for c in load_clusters()}
+    result: list[Cluster] = []
+    for cluster in inferred:
+        if cluster.id in existing:
+            result.append(existing[cluster.id])
+        else:
+            result.append(cluster)
+    return result
+
 
 PALETTE = [
     "#4A90D9",

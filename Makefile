@@ -1,7 +1,8 @@
 .PHONY: test clean lint format
 
 test:
-	zsh test.sh
+	python -m unittest discover tests/
+	zsh tests/test_cli.sh
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
@@ -10,7 +11,7 @@ clean:
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 
 lint:
-	uv run ruff check src/
+	uv run ruff check src/ tests/
 
 format:
-	uv run ruff format src/
+	uv run ruff format src/ tests/

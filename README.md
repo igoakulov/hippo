@@ -1,28 +1,29 @@
 # Hippo
 
-Local-first knowledge graph for agent-driven research.
+Hippo is a tool for your AI agent to visualize, update and expand your personal knowledge locally on your device.
 
 ## Quick Start
 
-```bash
-pip install -e .
-hippo init --vault ./my-vault
-cd my-vault
-hippo sync
-```
+TBD
 
 ## Commands
 
 ```bash
-hippo init --vault <path>     # Create new vault
-hippo sync                    # Rebuild graph from files
-hippo meta --ids <id>        # Get topic metadata
-hippo meta --ids <id> --set field=value  # Update metadata
-hippo graph --from <id>       # View topic neighborhood
-hippo graph --from <id> --to <id2>  # Find path
-hippo clean                   # Check for issues
-hippo backup                  # Create backup
-hippo restore                 # Restore from backup
+hippo init --vault <path>          # Create new vault
+hippo sync                         # Rebuild graph from files
+hippo meta --ids <ids>            # Get metadata (single or comma-separated)
+hippo meta --ids <ids> --set field=value...   # Update metadata
+hippo meta --ids <ids> --set ... --sync       # Update then sync
+hippo graph                         # View full graph
+hippo graph --from <id>           # View neighborhood
+hippo graph --from <id> --depth N # Traverse N levels
+hippo graph --from <id> --to <id2> # Find path
+hippo graph --sync                  # Sync before viewing
+hippo clean                         # Check for issues
+hippo clean --sync                  # Sync before checking
+hippo backup                        # Create backup
+hippo restore                        # Restore (most recent)
+hippo restore --version <ts>        # Restore specific backup
 ```
 
 ## Topic Format
@@ -52,12 +53,14 @@ Your notes here...
 
 ```
 vault/
-├── topics/           # Topic markdown files (source of truth)
-├── chats/            # Chat exports
-├── sources/          # Cached sources
-└── .hippo/          # App internals
-    ├── graph.json    # Derived graph
-    ├── archive.json  # Source references
-    ├── backups/      # Rolling backups
-    └── diffs/       # Change logs
+├── topics/            # Topic markdown files (source of truth)
+├── chats/             # Chat exports
+├── sources/           # Cached sources
+└── .hippo/            # App internals
+    ├── graph.json     # Derived graph
+    ├── graph.html     # Visualization
+    ├── clusters.json  # Cluster colors and titles
+    ├── archive.json   # Source references
+    ├── backups/       # Rolling backups
+    └── diffs/         # Change logs
 ```

@@ -38,8 +38,8 @@ class Topic:
     @staticmethod
     def from_dict(data: dict) -> "Topic":
         return Topic(
-            id=data["id"],
-            title=data["title"],
+            id=data.get("id", ""),
+            title=data.get("title", ""),
             aliases=data.get("aliases", []),
             progress=data.get("progress", "new"),
             created_at=data.get("created_at", ""),

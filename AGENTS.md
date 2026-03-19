@@ -38,6 +38,9 @@ Single `parent` field. Multiple parent needs → create intermediate topic.
 - snake_case for functions/methods
 - PascalCase for classes
 - Built-in generics: `list[str]`, `dict[str, str]`, `str | None`
+- Use built-in union syntax (`|`) over `typing.Union` or `typing.Optional`
+- Use built-in generics over `typing.Dict`, `typing.List`, etc.
+- `typing.Any` is acceptable for genuinely untyped values (e.g., arbitrary YAML data); prefer `object` as a supertype where applicable
 - Early returns as guards
 - Annotate public functions with return types
 
@@ -62,7 +65,9 @@ Before write operations:
 
 ## Testing
 
-- pytest with unittest mocks
+- `make test` runs all tests (unit tests + integration tests)
+- Unit tests: `python -m unittest discover tests/`
+- Integration tests: `zsh tests/test_cli.sh`
 - Mock filesystem operations
 - One assertion per test
 - Descriptive names: `test_meta_get_returns_frontmatter`
@@ -93,4 +98,5 @@ Before write operations:
 
 - `docs/prd.md` - Full requirements
 - `docs/skill.md` - Agent workflow instructions
+- `docs/tasks.md` - Implementation progress and task list
 - `docs/refactor.md` - Implementation plan

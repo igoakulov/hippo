@@ -21,8 +21,9 @@ def list_backups() -> list[str]:
 
 def create_backup(result) -> Path:
     from hippo.graph_builder import save_graph
+    from hippo.clusters import get_clusters_path
 
-    save_graph(result)
+    word_counts = save_graph(result)
 
     backups_dir = get_backups_dir()
     backups_dir.mkdir(parents=True, exist_ok=True)
@@ -30,10 +31,16 @@ def create_backup(result) -> Path:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     backup_path = backups_dir / f"graph_backup_{timestamp}.json"
 
+    clusters_path = get_clusters_path()
+    backup_clusters_path = backups_dir / f"clusters_backup_{timestamp}.json"
+    if clusters_path.exists():
+        backup_clusters_path.write_text(clusters_path.read_text())
+
     backup_data = {
         "timestamp": timestamp,
         "topics": [t.to_dict() for t in result.topics],
         "clusters": [c.to_dict() for c in result.clusters],
+        "word_counts": word_counts,
     }
     backup_path.write_text(json.dumps(backup_data, indent=2))
 
@@ -55,10 +62,22 @@ def restore_backup(timestamp: str) -> bool:
 
     graph_data = {
         "topics": backup_data["topics"],
-        "edges": [],
         "clusters": backup_data["clusters"],
+        "word_counts": backup_data.get("word_counts", {}),
     }
     graph_path.write_text(json.dumps(graph_data, indent=2))
+
+    backup_clusters_path = backups_dir / f"clusters_backup_{timestamp}.json"
+    from hippo.clusters import get_clusters_path, Cluster
+
+    clusters_path = get_clusters_path()
+    if backup_clusters_path.exists():
+        clusters_path.write_text(backup_clusters_path.read_text())
+    else:
+        clusters = [Cluster.from_dict(c) for c in backup_data.get("clusters", [])]
+        clusters_path.write_text(
+            json.dumps({"clusters": [c.to_dict() for c in clusters]}, indent=2)
+        )
 
     for topic_data in backup_data["topics"]:
         topic_id = topic_data["id"]

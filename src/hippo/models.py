@@ -29,13 +29,11 @@ class Cluster:
 class Graph:
     topics: list[Topic] = field(default_factory=list)
     clusters: list[Cluster] = field(default_factory=list)
-    edges: list[dict] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "clusters": [c.to_dict() for c in self.clusters],
             "topics": [n.to_dict() for n in self.topics],
-            "edges": self.edges,
         }
 
     @staticmethod
@@ -43,5 +41,4 @@ class Graph:
         return Graph(
             clusters=[Cluster.from_dict(c) for c in data.get("clusters", [])],
             topics=[Topic.from_dict(n) for n in data.get("topics", [])],
-            edges=data.get("edges", []),
         )

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from hippo import __version__
 from hippo.config import init_vault
-from hippo.graph_builder import sync as graph_sync
+from hippo.graph_builder import sync as graph_sync, build_graph
 from hippo.topic_markdown import update_frontmatter, get_frontmatter
 
 
@@ -27,9 +27,23 @@ def cmd_sync(args: argparse.Namespace) -> None:
     result = graph_sync()
     for topic in result.topics:
         print(f"Synced: {topic.id}")
-    for warning in result.warnings:
-        print(f"Warning: {warning}", file=sys.stderr)
-    print(f"Sync complete: {len(result.topics)} topics, {len(result.edges)} edges")
+    for issue in result.clean_issues:
+        print(f"Warning: {issue.filename}: {issue.message}", file=sys.stderr)
+    for error in result.validation_errors:
+        print(f"Error: {error.filename}: {error.message}", file=sys.stderr)
+    connection_count = _count_connections(result.topics)
+    print(f"Sync complete: {len(result.topics)} topics, {connection_count} connections")
+    if result.validation_errors:
+        sys.exit(1)
+
+
+def _count_connections(topics: list) -> int:
+    count = 0
+    for topic in topics:
+        if topic.parent:
+            count += 1
+        count += len(topic.related)
+    return count
 
 
 def cmd_meta(args: argparse.Namespace) -> None:
@@ -40,6 +54,19 @@ def cmd_meta(args: argparse.Namespace) -> None:
 
     if args.set_fields:
         _set_metadata(topic_ids, args.set_fields)
+        if args.sync:
+            result = graph_sync()
+            for error in result.validation_errors:
+                print(f"Error: {error.filename}: {error.message}", file=sys.stderr)
+            if result.validation_errors:
+                sys.exit(1)
+    elif args.sync:
+        result = graph_sync()
+        for error in result.validation_errors:
+            print(f"Error: {error.filename}: {error.message}", file=sys.stderr)
+        if result.validation_errors:
+            sys.exit(1)
+        _get_metadata(topic_ids)
     else:
         _get_metadata(topic_ids)
 
@@ -86,6 +113,9 @@ def _parse_value(value: str):
 def cmd_graph(args: argparse.Namespace) -> None:
     from hippo.directories import get_graph_path
 
+    if args.sync:
+        graph_sync()
+
     graph_path = get_graph_path()
     if not graph_path.exists():
         print("Graph not found. Run 'hippo sync' first.", file=sys.stderr)
@@ -93,16 +123,30 @@ def cmd_graph(args: argparse.Namespace) -> None:
 
     data = json.loads(graph_path.read_text())
     topics = data.get("topics", [])
-    edges = data.get("edges", [])
 
     if args.from_topic:
-        _show_neighborhood(args.from_topic, topics, edges, args.depth, args.to_topic)
+        _show_neighborhood(args.from_topic, topics, args.depth, args.to_topic)
     else:
         print(json.dumps(data, indent=2))
 
 
+def _build_connection_map(topics: list[dict]) -> dict[str, list[tuple]]:
+    conn_map: dict[str, list[tuple]] = {}
+    for topic in topics:
+        topic_id = topic["id"]
+        conn_map.setdefault(topic_id, [])
+        if topic.get("parent"):
+            parent = topic["parent"]
+            conn_map[topic_id].append((parent, "parent"))
+            conn_map.setdefault(parent, []).append((topic_id, "parent"))
+        for related_id in topic.get("related", []):
+            conn_map[topic_id].append((related_id, "related"))
+            conn_map.setdefault(related_id, []).append((topic_id, "related"))
+    return conn_map
+
+
 def _show_neighborhood(
-    from_id: str, topics: list, edges: list, depth: int, to_id: str | None
+    from_id: str, topics: list, depth: int, to_id: str | None
 ) -> None:
     topic_map = {t["id"]: t for t in topics}
 
@@ -111,14 +155,14 @@ def _show_neighborhood(
         sys.exit(1)
 
     if to_id:
-        path = _find_path(from_id, to_id, topic_map, edges)
+        path = _find_path(from_id, to_id, topic_map, topics)
         if path:
             print(" → ".join(path))
         else:
             print("No path found", file=sys.stderr)
             sys.exit(1)
     else:
-        reachable = _get_reachable(from_id, topic_map, edges, depth)
+        reachable = _get_reachable(from_id, topic_map, topics, depth)
         print(
             json.dumps(
                 [topic_map[tid] for tid in reachable if tid in topic_map], indent=2
@@ -127,19 +171,17 @@ def _show_neighborhood(
 
 
 def _get_reachable(
-    start_id: str, topic_map: dict, edges: list, max_depth: int
+    start_id: str, topic_map: dict, topics: list, max_depth: int
 ) -> set[str]:
+    conn_map = _build_connection_map(topics)
     reachable = {start_id}
     frontier = {start_id}
 
     for _ in range(max_depth):
         new_frontier = set()
         for tid in frontier:
-            for edge in edges:
-                if edge["source"] == tid:
-                    new_frontier.add(edge["target"])
-                elif edge["target"] == tid:
-                    new_frontier.add(edge["source"])
+            for neighbor, _ in conn_map.get(tid, []):
+                new_frontier.add(neighbor)
         new_frontier -= reachable
         if not new_frontier:
             break
@@ -150,15 +192,11 @@ def _get_reachable(
 
 
 def _find_path(
-    from_id: str, to_id: str, topic_map: dict, edges: list
+    from_id: str, to_id: str, topic_map: dict, topics: list
 ) -> list[str] | None:
     from collections import deque
 
-    edge_map: dict[str, list[tuple]] = {}
-    for edge in edges:
-        edge_map.setdefault(edge["source"], []).append((edge["target"], edge["type"]))
-        edge_map.setdefault(edge["target"], []).append((edge["source"], edge["type"]))
-
+    conn_map = _build_connection_map(topics)
     queue = deque([(from_id, [from_id])])
     visited = {from_id}
 
@@ -167,19 +205,30 @@ def _find_path(
         if current == to_id:
             return path
 
-        for neighbor, edge_type in edge_map.get(current, []):
+        for neighbor, conn_type in conn_map.get(current, []):
             if neighbor not in visited:
                 visited.add(neighbor)
-                queue.append((neighbor, path + [f"{neighbor} ({edge_type})"]))
+                queue.append((neighbor, path + [f"{neighbor} ({conn_type})"]))
 
     return None
 
 
 def cmd_clean(args: argparse.Namespace) -> None:
-    result = graph_sync()
-    if result.clean_issues:
+    result = graph_sync() if args.sync else build_graph()
+    has_errors = bool(result.validation_errors)
+    has_warnings = bool(result.clean_issues)
+
+    if has_errors:
+        print("ERRORS:")
+        for error in result.validation_errors:
+            print(f"  {error.topic_id} ({error.filename}): {error.message}")
+
+    if has_warnings:
+        print("WARNINGS:")
         for issue in result.clean_issues:
-            print(f"[{issue.issue_type}] {issue.topic_id}: {issue.message}")
+            print(f"  {issue.topic_id} ({issue.filename}): {issue.message}")
+
+    if has_errors or has_warnings:
         sys.exit(1)
     else:
         print("No issues found")
@@ -207,7 +256,11 @@ def cmd_restore(args: argparse.Namespace) -> None:
 
     if success:
         print("Restore complete")
-        graph_sync()
+        result = graph_sync()
+        for error in result.validation_errors:
+            print(f"Error: {error.filename}: {error.message}", file=sys.stderr)
+        if result.validation_errors:
+            sys.exit(1)
     else:
         print("Restore failed", file=sys.stderr)
         sys.exit(1)
@@ -235,15 +288,24 @@ def main() -> None:
     meta_parser.add_argument(
         "--set", nargs="+", dest="set_fields", help="field=value pairs"
     )
+    meta_parser.add_argument(
+        "--sync", action="store_true", help="Sync graph before reading or after writing"
+    )
     meta_parser.set_defaults(func=cmd_meta)
 
     graph_parser = subparsers.add_parser("graph", help="View graph")
     graph_parser.add_argument("--from", dest="from_topic", help="Starting topic")
     graph_parser.add_argument("--depth", type=int, default=1, help="Traversal depth")
     graph_parser.add_argument("--to", dest="to_topic", help="Target topic for path")
+    graph_parser.add_argument(
+        "--sync", action="store_true", help="Sync graph before viewing"
+    )
     graph_parser.set_defaults(func=cmd_graph)
 
     clean_parser = subparsers.add_parser("clean", help="Maintenance check")
+    clean_parser.add_argument(
+        "--sync", action="store_true", help="Sync graph before checking"
+    )
     clean_parser.set_defaults(func=cmd_clean)
 
     backup_parser = subparsers.add_parser("backup", help="Create rolling backup")
