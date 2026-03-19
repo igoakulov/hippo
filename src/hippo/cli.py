@@ -1,348 +1,260 @@
+import argparse
 import json
-from datetime import datetime
+import sys
+from pathlib import Path
 
-import click
-
-from hippo.directories import ensure_directories, topic_file_exists
-from hippo.models import Node
-from hippo.node_markdown import delete_topic_file, save_topic
-from hippo.storage import GraphStore
-
-
-@click.group()
-def main():
-    """Hippo - Local-first knowledge graph for agent-driven research."""
-    pass
+from hippo import __version__
+from hippo.config import init_vault
+from hippo.graph_builder import sync as graph_sync
+from hippo.topic_markdown import update_frontmatter, get_frontmatter
 
 
-@main.command()
-def version():
-    """Show version."""
-    from hippo import __version__
-
-    click.echo(__version__)
-
-
-@main.group()
-def topic():
-    """Manage topics."""
-    pass
+def cmd_init(args: argparse.Namespace) -> None:
+    vault_path = Path(args.vault).expanduser().resolve()
+    try:
+        init_vault(vault_path)
+        print(f"Initialized vault at: {vault_path}")
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
-@topic.command("add")
-@click.option("--ids", required=True, help="Comma-separated topic IDs")
-@click.option("--title", help="Title (defaults to ID)")
-@click.option("--cluster", default="", help="Cluster assignment")
-def topic_add(ids: str, title: str | None, cluster: str):
-    """Add new topics."""
-    store = GraphStore()
-    store.load()
-
-    for node_id in ids.split(","):
-        node_id = node_id.strip()
-        if not node_id:
-            continue
-        if store.get_node(node_id):
-            click.echo(f"Topic '{node_id}' already exists", err=True)
-            continue
-
-        node_title = title if title else node_id.title()
-        node = Node(
-            id=node_id,
-            title=node_title,
-            cluster=cluster,
-            created_at=datetime.utcnow().isoformat() + "Z",
-            updated_at=datetime.utcnow().isoformat() + "Z",
-        )
-        store.add_node(node)
-        save_topic(node)
-        click.echo(f"Added topic: {node_id}")
-
-    store.save()
+def cmd_version(args: argparse.Namespace) -> None:
+    print(__version__)
 
 
-@topic.command("update")
-@click.option("--ids", help="Comma-separated topic IDs")
-@click.option("--filter", "filter_expr", help="Filter expression (key=value)")
-@click.option("--progress", help="Progress status")
-@click.option("--cluster", help="Cluster assignment")
-def topic_update(
-    ids: str | None, filter_expr: str | None, progress: str | None, cluster: str | None
-):
-    """Update topics."""
-    store = GraphStore()
-    store.load()
-
-    nodes = _get_filtered_nodes(store, ids, filter_expr)
-    if not nodes:
-        click.echo("No topics found", err=True)
-        return
-
-    for node in nodes:
-        if progress:
-            node.progress = progress
-        if cluster is not None:
-            node.cluster = cluster
-        node.updated_at = datetime.utcnow().isoformat() + "Z"
-        save_topic(node)
-        click.echo(f"Updated topic: {node.id}")
-
-    store.save()
+def cmd_sync(args: argparse.Namespace) -> None:
+    result = graph_sync()
+    for topic in result.topics:
+        print(f"Synced: {topic.id}")
+    for warning in result.warnings:
+        print(f"Warning: {warning}", file=sys.stderr)
+    print(f"Sync complete: {len(result.topics)} topics, {len(result.edges)} edges")
 
 
-@topic.command("delete")
-@click.option("--ids", required=True, help="Comma-separated topic IDs")
-def topic_delete(ids: str):
-    """Delete topics."""
-    store = GraphStore()
-    store.load()
+def cmd_meta(args: argparse.Namespace) -> None:
+    topic_ids = [tid.strip() for tid in args.ids.split(",") if tid.strip()]
+    if not topic_ids:
+        print("Error: No topic IDs provided", file=sys.stderr)
+        sys.exit(1)
 
-    for node_id in ids.split(","):
-        node_id = node_id.strip()
-        if not node_id:
-            continue
-        if not store.get_node(node_id):
-            click.echo(f"Topic '{node_id}' not found", err=True)
-            continue
-
-        store.remove_node(node_id)
-        delete_topic_file(node_id)
-        click.echo(f"Deleted topic: {node_id}")
-
-    store.save()
-
-
-@topic.command("list")
-@click.option("--cluster", help="Filter by cluster")
-@click.option("--filter", "filter_expr", help="Filter expression")
-def topic_list(cluster: str | None, filter_expr: str | None):
-    """List topics."""
-    store = GraphStore()
-    store.load()
-
-    nodes = _get_filtered_nodes(store, None, filter_expr)
-    if cluster:
-        nodes = [n for n in nodes if n.cluster == cluster]
-
-    for node in nodes:
-        click.echo(f"{node.id} - {node.title}")
-
-
-@main.group()
-def conn():
-    """Manage connections between topics."""
-    pass
-
-
-@conn.command("add")
-@click.argument("source")
-@click.argument("target")
-@click.option(
-    "--type",
-    "conn_type",
-    default="parent",
-    help="Connection type (parent, children, related)",
-)
-def conn_add(source: str, target: str, conn_type: str):
-    """Add connection: hippo conn add source target --type parent"""
-    store = GraphStore()
-    store.load()
-
-    source_node = store.get_node(source)
-    if not source_node:
-        click.echo(f"Topic '{source}' not found", err=True)
-        return
-
-    added = False
-    for t in target.split(","):
-        t = t.strip()
-        if not t:
-            continue
-        if not store.get_node(t):
-            click.echo(f"Target topic '{t}' not found", err=True)
-            continue
-
-        if t not in source_node.connections:
-            source_node.connections[t] = []
-        if conn_type not in source_node.connections[t]:
-            source_node.connections[t].append(conn_type)
-            added = True
-
-    if added:
-        source_node.updated_at = datetime.utcnow().isoformat() + "Z"
-        save_topic(source_node)
-        store.save()
-        click.echo(f"Added connection: {source} -> {target} ({conn_type})")
-
-
-@conn.command("remove")
-@click.argument("source")
-@click.argument("target", required=False)
-@click.option("--all", "remove_all", is_flag=True, help="Remove all connections")
-def conn_remove(source: str, target: str | None, remove_all: bool):
-    """Remove connection: hippo conn remove source target"""
-    store = GraphStore()
-    store.load()
-
-    source_node = store.get_node(source)
-    if not source_node:
-        click.echo(f"Topic '{source}' not found", err=True)
-        return
-
-    if remove_all:
-        source_node.connections = {}
-    elif target:
-        if target in source_node.connections:
-            del source_node.connections[target]
+    if args.set_fields:
+        _set_metadata(topic_ids, args.set_fields)
     else:
-        click.echo("Specify target or --all", err=True)
-        return
-
-    source_node.updated_at = datetime.utcnow().isoformat() + "Z"
-    save_topic(source_node)
-    store.save()
-    click.echo(f"Removed connections from: {source}")
+        _get_metadata(topic_ids)
 
 
-@conn.command("list")
-@click.argument("source")
-def conn_list(source: str):
-    """List connections: hippo conn list source"""
-    store = GraphStore()
-    store.load()
-
-    source_node = store.get_node(source)
-    if not source_node:
-        click.echo(f"Topic '{source}' not found", err=True)
-        return
-
-    for target, types in source_node.connections.items():
-        click.echo(f"{source} -> {target}: {', '.join(types)}")
-
-
-@main.command()
-@click.option("--cluster", help="Filter by cluster")
-@click.option("--from", "from_node", help="Starting node")
-@click.option("--depth", type=int, default=1, help="Traversal depth")
-@click.option("--path", "path_node", help="Find path to target node")
-def graph(
-    cluster: str | None, from_node: str | None, depth: int, path_node: str | None
-):
-    """Query graph."""
-    store = GraphStore()
-    store.load()
-
-    nodes = store.graph.topics
-
-    if cluster:
-        nodes = [n for n in nodes if n.cluster == cluster]
-
-    if from_node:
-        source = store.get_node(from_node)
-        if not source:
-            click.echo(f"Topic '{from_node}' not found", err=True)
-            return
-        related = _get_related_nodes(store, from_node, depth)
-        nodes = [n for n in nodes if n.id in related]
-
-    if path_node and from_node:
-        paths = _find_all_paths(store, from_node, path_node)
-        click.echo(json.dumps(paths, indent=2))
-    else:
-        click.echo(json.dumps([n.to_dict() for n in nodes], indent=2))
-
-
-@main.command()
-def sync():
-    """Sync metadata from graph.json to all topic markdown files."""
-    store = GraphStore()
-    store.load()
-
-    ensure_directories()
-
-    for node in store.graph.topics:
-        if not topic_file_exists(node.id):
-            save_topic(node)
-            click.echo(f"Created: {node.id}")
+def _get_metadata(topic_ids: list[str]) -> None:
+    for topic_id in topic_ids:
+        fm = get_frontmatter(topic_id)
+        if fm:
+            print(f"--- {topic_id} ---")
+            for key, value in fm.items():
+                print(f"  {key}: {value}")
+            print()
         else:
-            save_topic(node)
-            click.echo(f"Synced: {node.id}")
-
-    click.echo("Sync complete")
+            print(f"Topic not found: {topic_id}", file=sys.stderr)
 
 
-def _get_filtered_nodes(
-    store: GraphStore, ids: str | None, filter_expr: str | None
-) -> list[Node]:
-    if ids:
-        node_list = []
-        for node_id in ids.split(","):
-            node = store.get_node(node_id.strip())
-            if node:
-                node_list.append(node)
-        return node_list
+def _set_metadata(topic_ids: list[str], set_fields: list[str]) -> None:
+    updates = {}
+    for field in set_fields:
+        if "=" not in field:
+            print(
+                f"Error: Invalid field format: {field} (expected key=value)",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        key, value = field.split("=", 1)
+        updates[key.strip()] = _parse_value(value.strip())
 
-    if filter_expr:
-        filtered = []
-        for part in filter_expr.split(","):
-            if "=" in part:
-                key, value = part.split("=", 1)
-                key = key.strip()
-                value = value.strip()
-                for node in store.graph.topics:
-                    node_val = getattr(node, key, None)
-                    if node_val and value in node_val:
-                        filtered.append(node)
-        return filtered
-
-    return store.graph.topics
+    for topic_id in topic_ids:
+        try:
+            update_frontmatter(topic_id, updates)
+            print(f"Updated: {topic_id}")
+        except FileNotFoundError:
+            print(f"Topic not found: {topic_id}", file=sys.stderr)
 
 
-def _get_related_nodes(store: GraphStore, node_id: str, depth: int) -> set[str]:
-    related = {node_id}
-    queue = [(node_id, 0)]
-    visited = {node_id}
+def _parse_value(value: str):
+    if value.startswith("[") and value.endswith("]"):
+        items = value[1:-1].split(",")
+        return [v.strip() for v in items if v.strip()]
+    return value
+
+
+def cmd_graph(args: argparse.Namespace) -> None:
+    from hippo.directories import get_graph_path
+
+    graph_path = get_graph_path()
+    if not graph_path.exists():
+        print("Graph not found. Run 'hippo sync' first.", file=sys.stderr)
+        sys.exit(1)
+
+    data = json.loads(graph_path.read_text())
+    topics = data.get("topics", [])
+    edges = data.get("edges", [])
+
+    if args.from_topic:
+        _show_neighborhood(args.from_topic, topics, edges, args.depth, args.to_topic)
+    else:
+        print(json.dumps(data, indent=2))
+
+
+def _show_neighborhood(
+    from_id: str, topics: list, edges: list, depth: int, to_id: str | None
+) -> None:
+    topic_map = {t["id"]: t for t in topics}
+
+    if from_id not in topic_map:
+        print(f"Topic not found: {from_id}", file=sys.stderr)
+        sys.exit(1)
+
+    if to_id:
+        path = _find_path(from_id, to_id, topic_map, edges)
+        if path:
+            print(" → ".join(path))
+        else:
+            print("No path found", file=sys.stderr)
+            sys.exit(1)
+    else:
+        reachable = _get_reachable(from_id, topic_map, edges, depth)
+        print(
+            json.dumps(
+                [topic_map[tid] for tid in reachable if tid in topic_map], indent=2
+            )
+        )
+
+
+def _get_reachable(
+    start_id: str, topic_map: dict, edges: list, max_depth: int
+) -> set[str]:
+    reachable = {start_id}
+    frontier = {start_id}
+
+    for _ in range(max_depth):
+        new_frontier = set()
+        for tid in frontier:
+            for edge in edges:
+                if edge["source"] == tid:
+                    new_frontier.add(edge["target"])
+                elif edge["target"] == tid:
+                    new_frontier.add(edge["source"])
+        new_frontier -= reachable
+        if not new_frontier:
+            break
+        reachable |= new_frontier
+        frontier = new_frontier
+
+    return reachable
+
+
+def _find_path(
+    from_id: str, to_id: str, topic_map: dict, edges: list
+) -> list[str] | None:
+    from collections import deque
+
+    edge_map: dict[str, list[tuple]] = {}
+    for edge in edges:
+        edge_map.setdefault(edge["source"], []).append((edge["target"], edge["type"]))
+        edge_map.setdefault(edge["target"], []).append((edge["source"], edge["type"]))
+
+    queue = deque([(from_id, [from_id])])
+    visited = {from_id}
 
     while queue:
-        current, d = queue.pop(0)
-        if d >= depth:
-            continue
+        current, path = queue.popleft()
+        if current == to_id:
+            return path
 
-        node = store.get_node(current)
-        if not node:
-            continue
+        for neighbor, edge_type in edge_map.get(current, []):
+            if neighbor not in visited:
+                visited.add(neighbor)
+                queue.append((neighbor, path + [f"{neighbor} ({edge_type})"]))
 
-        for target in node.connections:
-            if target not in visited:
-                visited.add(target)
-                related.add(target)
-                queue.append((target, d + 1))
-
-    return related
+    return None
 
 
-def _find_all_paths(store: GraphStore, start: str, end: str) -> list[list[str]]:
-    """Find all paths between two nodes."""
-    paths = []
+def cmd_clean(args: argparse.Namespace) -> None:
+    result = graph_sync()
+    if result.clean_issues:
+        for issue in result.clean_issues:
+            print(f"[{issue.issue_type}] {issue.topic_id}: {issue.message}")
+        sys.exit(1)
+    else:
+        print("No issues found")
 
-    def dfs(current: str, path: list[str], visited: set[str]):
-        if current == end:
-            paths.append(path[:])
-            return
-        if current in visited:
-            return
 
-        visited.add(current)
-        node = store.get_node(current)
-        if node:
-            for target in node.connections:
-                path.append(target)
-                dfs(target, path, visited)
-                path.pop()
-        visited.remove(current)
+def cmd_backup(args: argparse.Namespace) -> None:
+    from hippo.backup import create_backup
 
-    dfs(start, [start], set())
-    return paths
+    result = graph_sync()
+    backup_path = create_backup(result)
+    print(f"Backup created: {backup_path}")
+
+
+def cmd_restore(args: argparse.Namespace) -> None:
+    from hippo.backup import restore_backup, list_backups
+
+    if args.version:
+        success = restore_backup(args.version)
+    else:
+        backups = list_backups()
+        if not backups:
+            print("No backups found", file=sys.stderr)
+            sys.exit(1)
+        success = restore_backup(backups[0])
+
+    if success:
+        print("Restore complete")
+        graph_sync()
+    else:
+        print("Restore failed", file=sys.stderr)
+        sys.exit(1)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        prog="hippo",
+        description="Hippo - Local-first knowledge graph for agent-driven research.",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser("init", help="Initialize a new vault")
+    init_parser.add_argument("--vault", required=True, help="Path to vault directory")
+    init_parser.set_defaults(func=cmd_init)
+
+    version_parser = subparsers.add_parser("version", help="Show version")
+    version_parser.set_defaults(func=cmd_version)
+
+    sync_parser = subparsers.add_parser("sync", help="Rebuild graph from files")
+    sync_parser.set_defaults(func=cmd_sync)
+
+    meta_parser = subparsers.add_parser("meta", help="Get or set topic metadata")
+    meta_parser.add_argument("--ids", required=True, help="Comma-separated topic IDs")
+    meta_parser.add_argument(
+        "--set", nargs="+", dest="set_fields", help="field=value pairs"
+    )
+    meta_parser.set_defaults(func=cmd_meta)
+
+    graph_parser = subparsers.add_parser("graph", help="View graph")
+    graph_parser.add_argument("--from", dest="from_topic", help="Starting topic")
+    graph_parser.add_argument("--depth", type=int, default=1, help="Traversal depth")
+    graph_parser.add_argument("--to", dest="to_topic", help="Target topic for path")
+    graph_parser.set_defaults(func=cmd_graph)
+
+    clean_parser = subparsers.add_parser("clean", help="Maintenance check")
+    clean_parser.set_defaults(func=cmd_clean)
+
+    backup_parser = subparsers.add_parser("backup", help="Create rolling backup")
+    backup_parser.set_defaults(func=cmd_backup)
+
+    restore_parser = subparsers.add_parser("restore", help="Restore from backup")
+    restore_parser.add_argument("--version", help="Specific backup version")
+    restore_parser.set_defaults(func=cmd_restore)
+
+    args = parser.parse_args()
+    args.func(args)
 
 
 if __name__ == "__main__":

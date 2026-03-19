@@ -1,16 +1,12 @@
 import json
 from pathlib import Path
 
-from hippo.models import Cluster, Graph, Node
+from hippo.models import Cluster, Graph, Topic
 
 
 class GraphStore:
-    DEFAULT_GRAPH_PATH = "graph.json"
-
     def __init__(self, graph_path: str | None = None):
-        self._graph_path = (
-            Path(graph_path) if graph_path else Path(self.DEFAULT_GRAPH_PATH)
-        )
+        self._graph_path = Path(graph_path) if graph_path else None
         self._graph: Graph | None = None
 
     def _require_loaded(self) -> Graph:
@@ -23,37 +19,38 @@ class GraphStore:
         return self._require_loaded()
 
     def load(self) -> None:
-        if not self._graph_path.exists():
+        if self._graph_path and self._graph_path.exists():
+            data = json.loads(self._graph_path.read_text())
+            self._graph = Graph.from_dict(data)
+        else:
             self._graph = Graph()
-            return
-        data = json.loads(self._graph_path.read_text())
-        self._graph = Graph.from_dict(data)
 
     def save(self) -> None:
+        if not self._graph_path:
+            return
         g = self._require_loaded()
         self._graph_path.parent.mkdir(parents=True, exist_ok=True)
-        Path("topics").mkdir(parents=True, exist_ok=True)
         self._graph_path.write_text(json.dumps(g.to_dict(), indent=2))
 
-    def get_node(self, node_id: str) -> Node | None:
+    def get_topic(self, topic_id: str) -> Topic | None:
         g = self._require_loaded()
-        for node in g.topics:
-            if node.id == node_id:
-                return node
+        for topic in g.topics:
+            if topic.id == topic_id:
+                return topic
         return None
 
-    def add_node(self, node: Node) -> None:
+    def add_topic(self, topic: Topic) -> None:
         g = self._require_loaded()
-        g.topics.append(node)
+        g.topics.append(topic)
 
-    def remove_node(self, node_id: str) -> None:
+    def remove_topic(self, topic_id: str) -> None:
         g = self._require_loaded()
-        g.topics = [n for n in g.topics if n.id != node_id]
-        for node in g.topics:
-            if node_id in node.connections:
-                del node.connections[node_id]
+        g.topics = [n for n in g.topics if n.id != topic_id]
+        for topic in g.topics:
+            if topic.parent == topic_id:
+                topic.parent = ""
 
-    def list_nodes(self, cluster: str | None = None) -> list[Node]:
+    def list_topics(self, cluster: str | None = None) -> list[Topic]:
         g = self._require_loaded()
         if cluster:
             return [n for n in g.topics if n.cluster == cluster]

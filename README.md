@@ -1,81 +1,63 @@
 # Hippo
 
-Hippo is a local-first knowledge graph for agent-driven research.
+Local-first knowledge graph for agent-driven research.
 
-## Overview
+## Quick Start
 
-Hippo captures and organizes knowledge from X posts, ChatGPT conversations, URLs, and local documents into a structured graph. Built for agents using filesystem tools (`ls`, `rg`, `cat`, `jq`).
-
-## Installation
-
-Install agent skill, agent will set up the rest.
+```bash
+pip install -e .
+hippo init --vault ./my-vault
+cd my-vault
+hippo sync
+```
 
 ## Commands
 
 ```bash
-# Topics (nodes)
-hippo topic add --ids a,b,c --cluster transformers
-hippo topic update --ids a --progress started
-hippo topic delete --ids a,b
-hippo topic list
-
-# Connections
-hippo conn add a b --type parent
-hippo conn add a b,c --type parent  # bulk targets
-hippo conn remove a b
-hippo conn list a
-
-# Graph queries
-hippo graph --cluster transformers
-hippo graph --from flashattention --depth 2
-hippo graph --path a b
-
-# System
-hippo sync        # sync metadata, re-create missing files
-hippo render      # generate visualization (future)
-hippo backup      # backup graph (future)
+hippo init --vault <path>     # Create new vault
+hippo sync                    # Rebuild graph from files
+hippo meta --ids <id>        # Get topic metadata
+hippo meta --ids <id> --set field=value  # Update metadata
+hippo graph --from <id>       # View topic neighborhood
+hippo graph --from <id> --to <id2>  # Find path
+hippo clean                   # Check for issues
+hippo backup                  # Create backup
+hippo restore                 # Restore from backup
 ```
 
-## File Structure
+## Topic Format
 
-```
-graph.json         # clusters + topics (single source of truth)
-topics/           # topic markdown files
-  a.md
-  b.md
-sources/          # cached sources
-backups/          # backups
-diffs/            # change history
-render/           # visualization output
-```
+Topics are markdown files with YAML frontmatter:
 
-## Topic Markdown Format (9 lines)
-
-```
+```yaml
+---
 id: flashattention
 title: FlashAttention
-aliases: flash-attention, flash attention
+aliases: flash-attention
 progress: new
+created_at: 2026-03-19
+updated_at: 2026-03-19
 cluster: transformers
-created: 2026-03-15
-updated: 2026-03-20
-sources: https://x.com/user/123
-connections: parent:attention;related:ringattention
-
+parent: attention
+related: [ringattention]
+sources:
+  - https://arxiv.org/abs/2205.14148
+---
 # FlashAttention
 
-[content]
+Your notes here...
 ```
 
-## Agent Discovery
+## Vault Structure
 
-```bash
-# List all titles
-grep "^title:" topics/*.md
-
-# Find by keyword
-grep "attention" topics/*.md
-
-# Get metadata (first 9 lines)
-head topics/flashattention.md
+```
+vault/
+├── topics/           # Topic markdown files (source of truth)
+├── chats/            # Chat exports
+├── sources/          # Cached sources
+└── .hippo/          # App internals
+    ├── graph.json    # Derived graph
+    ├── archive.json  # Source references
+    ├── backups/      # Rolling backups
+    └── diffs/       # Change logs
 ```

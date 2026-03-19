@@ -1,0 +1,133 @@
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+from hippo.directories import get_backups_dir, get_graph_path
+
+DEFAULT_RETENTION = 20
+
+
+def list_backups() -> list[str]:
+    backups_dir = get_backups_dir()
+    if not backups_dir.exists():
+        return []
+    backups = []
+    for path in backups_dir.glob("graph_backup_*.json"):
+        ts = path.stem.replace("graph_backup_", "")
+        backups.append(ts)
+    return sorted(backups, reverse=True)
+
+
+def create_backup(result) -> Path:
+    from hippo.graph_builder import save_graph
+
+    save_graph(result)
+
+    backups_dir = get_backups_dir()
+    backups_dir.mkdir(parents=True, exist_ok=True)
+
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
+    backup_path = backups_dir / f"graph_backup_{timestamp}.json"
+
+    backup_data = {
+        "timestamp": timestamp,
+        "topics": [t.to_dict() for t in result.topics],
+        "clusters": [c.to_dict() for c in result.clusters],
+    }
+    backup_path.write_text(json.dumps(backup_data, indent=2))
+
+    _prune_backups()
+
+    return backup_path
+
+
+def restore_backup(timestamp: str) -> bool:
+    backups_dir = get_backups_dir()
+    backup_path = backups_dir / f"graph_backup_{timestamp}.json"
+
+    if not backup_path.exists():
+        print(f"Backup not found: {timestamp}", file=sys.stderr)
+        return False
+
+    backup_data = json.loads(backup_path.read_text())
+    graph_path = get_graph_path()
+
+    graph_data = {
+        "topics": backup_data["topics"],
+        "edges": [],
+        "clusters": backup_data["clusters"],
+    }
+    graph_path.write_text(json.dumps(graph_data, indent=2))
+
+    for topic_data in backup_data["topics"]:
+        topic_id = topic_data["id"]
+        _restore_topic_frontmatter(topic_id, topic_data)
+
+    return True
+
+
+def _restore_topic_frontmatter(topic_id: str, data: dict) -> None:
+    from hippo.directories import get_topic_path
+
+    path = get_topic_path(topic_id)
+    if not path.exists():
+        return
+
+    lines = []
+    lines.append("---")
+    lines.append(f"id: {data['id']}")
+    lines.append(f"title: {data['title']}")
+
+    aliases = data.get("aliases", [])
+    if aliases:
+        lines.append("aliases:")
+        for a in aliases:
+            lines.append(f"  - {a}")
+    else:
+        lines.append("aliases:")
+
+    lines.append(f"progress: {data.get('progress', 'new')}")
+    lines.append(f"created_at: {data.get('created_at', '')}")
+    lines.append(f"updated_at: {data.get('updated_at', '')}")
+    lines.append(f"cluster: {data.get('cluster', '')}")
+    lines.append(f"parent: {data.get('parent', '')}")
+
+    related = data.get("related", [])
+    if related:
+        lines.append("related:")
+        for r in related:
+            lines.append(f"  - {r}")
+    else:
+        lines.append("related: []")
+
+    sources = data.get("sources", [])
+    if sources:
+        lines.append("sources:")
+        for s in sources:
+            lines.append(f"  - {s}")
+    else:
+        lines.append("sources:")
+
+    lines.append("---")
+
+    content = path.read_text()
+    body = ""
+    if "---" in content:
+        parts = content.split("---", 2)
+        if len(parts) > 2:
+            body = parts[2]
+
+    path.write_text("\n".join(lines) + "\n" + body)
+
+
+def _prune_backups(retention: int = DEFAULT_RETENTION) -> None:
+    backups_dir = get_backups_dir()
+    backups = sorted(
+        backups_dir.glob("graph_backup_*.json"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+
+    for old_backup in backups[retention:]:
+        old_backup.unlink()
