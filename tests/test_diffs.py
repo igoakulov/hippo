@@ -36,12 +36,12 @@ class TestComputeDiff(unittest.TestCase):
 
     def test_parent_change_recorded_as_metadata_change(self):
         old = {
-            "topics": [{"id": "a", "title": "A", "parent": "root"}],
-            "word_counts": {},
+            "topics": [{"id": "a", "title": "A", "parent": "root", "word_count": 0}],
         }
         new = {
-            "topics": [{"id": "a", "title": "A", "parent": "newparent"}],
-            "word_counts": {"a": 0},
+            "topics": [
+                {"id": "a", "title": "A", "parent": "newparent", "word_count": 0}
+            ],
         }
 
         diff = compute_diff(old, new)
@@ -54,12 +54,12 @@ class TestComputeDiff(unittest.TestCase):
 
     def test_parent_change_records_connection_deleted_and_added(self):
         old = {
-            "topics": [{"id": "a", "title": "A", "parent": "root"}],
-            "word_counts": {},
+            "topics": [{"id": "a", "title": "A", "parent": "root", "word_count": 0}],
         }
         new = {
-            "topics": [{"id": "a", "title": "A", "parent": "newparent"}],
-            "word_counts": {"a": 0},
+            "topics": [
+                {"id": "a", "title": "A", "parent": "newparent", "word_count": 0}
+            ],
         }
 
         diff = compute_diff(old, new)
@@ -75,12 +75,14 @@ class TestComputeDiff(unittest.TestCase):
 
     def test_related_change_records_connections(self):
         old = {
-            "topics": [{"id": "a", "title": "A", "related": ["x", "y"]}],
-            "word_counts": {},
+            "topics": [
+                {"id": "a", "title": "A", "related": ["x", "y"], "word_count": 0}
+            ],
         }
         new = {
-            "topics": [{"id": "a", "title": "A", "related": ["x", "z"]}],
-            "word_counts": {"a": 0},
+            "topics": [
+                {"id": "a", "title": "A", "related": ["x", "z"], "word_count": 0}
+            ],
         }
 
         diff = compute_diff(old, new)
@@ -95,10 +97,10 @@ class TestComputeDiff(unittest.TestCase):
         self.assertIn(("a", "z", "related"), added_conns)
 
     def test_word_count_change_recorded(self):
-        old = {"topics": [{"id": "a", "title": "A"}], "word_counts": {"a": 10}}
-        new = {"topics": [{"id": "a", "title": "A"}], "word_counts": {"a": 30}}
+        old = {"topics": [{"id": "a", "title": "A", "word_count": 10}]}
+        new = {"topics": [{"id": "a", "title": "A", "word_count": 30}]}
 
-        diff = compute_diff(old, new, {"a": 10})
+        diff = compute_diff(old, new)
 
         self.assertIn("a", diff.topics_content_changed)
         self.assertEqual(diff.topics_content_changed["a"]["old"], 10)
@@ -107,26 +109,22 @@ class TestComputeDiff(unittest.TestCase):
 
     def test_no_changes_returns_empty_diff(self):
         old = {
-            "topics": [{"id": "a", "title": "A", "parent": ""}],
-            "word_counts": {"a": 5},
+            "topics": [{"id": "a", "title": "A", "parent": "", "word_count": 5}],
         }
         new = {
-            "topics": [{"id": "a", "title": "A", "parent": ""}],
-            "word_counts": {"a": 5},
+            "topics": [{"id": "a", "title": "A", "parent": "", "word_count": 5}],
         }
 
-        diff = compute_diff(old, new, {"a": 5})
+        diff = compute_diff(old, new)
 
         self.assertTrue(diff.is_empty())
 
     def test_cluster_change_recorded_as_metadata_change(self):
         old = {
-            "topics": [{"id": "a", "title": "A", "cluster": "ml"}],
-            "word_counts": {},
+            "topics": [{"id": "a", "title": "A", "cluster": "ml", "word_count": 0}],
         }
         new = {
-            "topics": [{"id": "a", "title": "A", "cluster": "nlp"}],
-            "word_counts": {"a": 0},
+            "topics": [{"id": "a", "title": "A", "cluster": "nlp", "word_count": 0}],
         }
 
         diff = compute_diff(old, new)

@@ -89,11 +89,12 @@ def build_graph() -> BuildResult:
                     ValidationError(
                         topic_id=topic_id,
                         filename=filename,
-                        message="Missing required field: id",
+                        message="Missing topic id",
                     )
                 )
 
             topic = topic_from_markdown(topic_id, content)
+            topic.word_count = _count_words(body)
 
             filename_map[topic.id] = filename
 
@@ -102,7 +103,7 @@ def build_graph() -> BuildResult:
                     ValidationError(
                         topic_id=topic.id,
                         filename=filename,
-                        message="Duplicate topic ID",
+                        message=f"Duplicate topic id: {topic.id}",
                     )
                 )
             seen_ids.add(topic.id)
@@ -115,7 +116,7 @@ def build_graph() -> BuildResult:
                         topic_id=topic.id,
                         filename=filename,
                         issue_type="frontmatter_position",
-                        message="Metadata frontmatter not at top of file",
+                        message="Frontmatter not at top",
                     )
                 )
 
@@ -125,7 +126,7 @@ def build_graph() -> BuildResult:
                         topic_id=topic.id,
                         filename=filename,
                         issue_type="empty_body",
-                        message="No content (empty body)",
+                        message="Empty body",
                     )
                 )
 
@@ -135,7 +136,7 @@ def build_graph() -> BuildResult:
                         topic_id=topic.id,
                         filename=filename,
                         issue_type="no_sources",
-                        message="No sources in metadata",
+                        message="No sources",
                     )
                 )
 
@@ -145,7 +146,7 @@ def build_graph() -> BuildResult:
                         topic_id=topic.id,
                         filename=filename,
                         issue_type="no_parent",
-                        message="No parent in metadata (root topic)",
+                        message="No parent",
                     )
                 )
 
@@ -155,7 +156,7 @@ def build_graph() -> BuildResult:
                         topic_id=topic.id,
                         filename=filename,
                         issue_type="unknown_progress",
-                        message=f"Unknown progress value '{topic.progress}' in metadata",
+                        message=f"Unknown progress: {topic.progress}",
                     )
                 )
 
@@ -172,7 +173,7 @@ def build_graph() -> BuildResult:
                     topic_id=topic_id,
                     filename=filename,
                     issue_type="invalid_yaml",
-                    message="Metadata frontmatter has issues but was parsed",
+                    message="Frontmatter parsed with issues",
                 )
             )
 
@@ -183,7 +184,7 @@ def build_graph() -> BuildResult:
                     topic_id=topic.id,
                     filename=filename_map.get(topic.id, f"{topic.id}.md"),
                     issue_type="orphan_parent",
-                    message=f"Parent '{topic.parent}' in metadata does not exist",
+                    message=f"Parent not found: {topic.parent}",
                 )
             )
 
@@ -200,41 +201,25 @@ def build_graph() -> BuildResult:
     )
 
 
-def _compute_word_counts(topics: list[Topic]) -> dict[str, int]:
-    result = {}
-    for path in scan_topics_dir():
-        topic_id = path.stem
-        content = path.read_text()
-        _, body = parse_frontmatter(content)
-        result[topic_id] = _count_words(body)
-    return result
-
-
-def save_graph(result: BuildResult) -> dict[str, int]:
+def save_graph(result: BuildResult) -> None:
     from hippo.diffs import compute_diff, save_diff
 
     graph_path = get_graph_path()
     graph_path.parent.mkdir(parents=True, exist_ok=True)
 
     old_graph: dict | None = None
-    old_word_counts: dict[str, int] = {}
     if graph_path.exists():
         try:
-            loaded: dict = json.loads(graph_path.read_text())
-            old_graph = loaded
-            old_word_counts = loaded.get("word_counts", {}) or {}
+            old_graph = json.loads(graph_path.read_text())
         except (json.JSONDecodeError, IOError):
             pass
-
-    word_counts = _compute_word_counts(result.topics)
 
     data = {
         "topics": [t.to_dict() for t in result.topics],
         "clusters": [c.to_dict() for c in result.clusters],
-        "word_counts": word_counts,
     }
 
-    diff = compute_diff(old_graph, data, old_word_counts)
+    diff = compute_diff(old_graph, data)
     if not diff.is_empty():
         save_diff(diff)
 
@@ -242,10 +227,10 @@ def save_graph(result: BuildResult) -> dict[str, int]:
     graph_path.write_text(json.dumps(data, indent=2))
 
     sync_archive_from_topics([t.to_dict() for t in result.topics])
-    return word_counts
 
 
 def sync() -> BuildResult:
     result = build_graph()
-    save_graph(result)
+    if not result.validation_errors:
+        save_graph(result)
     return result

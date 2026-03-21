@@ -92,6 +92,79 @@ Before write operations:
 - Scope: frontmatter only, not prose content
 - Configurable retention (default 20)
 
+### CLI Command Structure
+
+**Topics:** `hippo topics [--ids <ids>] [--meta key=value...] [--sync] [--warnings]`
+- Summary: `Total topics: N new, M started, K completed, X warnings`
+- With `--ids`: Get or set topic metadata
+- With `--meta`: Update metadata fields
+- With `--sync`: Sync graph after update
+- With `--warnings`: Show warning details
+
+**Sync:** `hippo sync [--warnings]`
+- Summary: `Sync complete: N topics, M connections, X warnings`
+- With `--warnings`: Show warning details
+
+**Sources:** `hippo sources [--warnings]`
+- Summary: `Total sources: N chats, M x_posts, K urls, X removed, Y warnings`
+- With `--warnings`: Show orphan source warnings
+
+**Ingest:** `hippo chatgpt --path <file> [--from <datetime>] [--till <datetime>] [--titles <titles>]`
+- Ingest ChatGPT exports
+
+**Graph:** `hippo graph [--from <id>] [--to <id>] [--depth N] [--sync] [--warnings] [--pretty] [--minimal] [--full] [--full+]`
+- With `--from`/`--to`: Path finding or neighborhood traversal
+- With `--sync`: Sync graph before viewing
+- With `--pretty`: Formatted JSON output
+- With `--minimal`: id, cluster, parent, related (default)
+- With `--full`: All standard fields
+- With `--full+`: Full + sources, word_count
+
+### CLI Output Patterns
+
+**Token efficiency:** Avoid repetition. Use lists/headers over repeated lines.
+
+**Section separation:** Blank line between distinct sections (summary + details).
+
+**Section headings:** Use caps `ERRORS:` / `WARNINGS:` as headers only. Prepend to single cases when context is ambiguous.
+
+**Sequential summaries:** Multiple summaries count as one section (no blank line between).
+
+**Filepath placement:** For created files, filepath comes last (after summaries/errors/warnings).
+
+**Error messages:**
+- `Missing topic id`
+- `Duplicate topic id: {id}`
+- `Frontmatter not at top`
+- `Empty body`
+- `No sources`
+- `No parent`
+- `Unknown progress: {value}`
+- `Frontmatter parsed with issues`
+- `Parent not found: {parent}`
+
+**Grouped list pattern (errors/warnings):**
+```
+ERRORS
+topic-id (filename):
+- error message
+- error message
+
+topic-id (filename):
+- error message
+```
+
+**Metadata output pattern:**
+```
+filename.md
+field: value
+field: value
+
+filename.md
+field: value
+...
+```
+
 ---
 
 ## Where to Find What

@@ -168,3 +168,21 @@ def _upsert_reference(
             added_at=now_iso(),
         )
     )
+
+
+def get_source_stats() -> dict:
+    archive = load_archive()
+
+    by_type: dict[str, int] = {}
+    removed_count = 0
+
+    for ref in archive.references:
+        if ref.removed_at:
+            removed_count += 1
+        else:
+            by_type[ref.type] = by_type.get(ref.type, 0) + 1
+
+    return {
+        "by_type": by_type,
+        "removed": removed_count,
+    }

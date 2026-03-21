@@ -11,20 +11,28 @@ TBD
 ```bash
 hippo init --vault <path>          # Create new vault
 hippo sync                         # Rebuild graph from files
-hippo meta --ids <ids>            # Get metadata (single or comma-separated)
-hippo meta --ids <ids> --set field=value...   # Update metadata
-hippo meta --ids <ids> --set ... --sync       # Update then sync
+hippo topics                       # List topics with progress counts
+hippo topics --ids <ids>          # Get metadata (single or comma-separated)
+hippo topics --ids <ids> --meta field=value...   # Update metadata
+hippo topics --ids <ids> --meta ... --sync       # Update then sync
 hippo graph                         # View full graph
 hippo graph --from <id>           # View neighborhood
 hippo graph --from <id> --depth N # Traverse N levels
 hippo graph --from <id> --to <id2> # Find path
 hippo graph --sync                  # Sync before viewing
-hippo clean                         # Check for issues
-hippo clean --sync                  # Sync before checking
+hippo sources                       # View source stats
+hippo chatgpt --path <file>       # Ingest ChatGPT exports
 hippo backup                        # Create backup
-hippo restore                        # Restore (most recent)
+hippo restore                       # Restore (most recent)
 hippo restore --version <ts>        # Restore specific backup
 ```
+
+## Warnings
+
+Add `--warnings` to any command to show and troubleshoot issues:
+- `hippo sync --warnings`
+- `hippo topics --warnings`
+- `hippo sources --warnings`
 
 ## Topic Format
 
@@ -54,8 +62,8 @@ Your notes here...
 ```
 vault/
 ├── topics/            # Topic markdown files (source of truth)
-├── chats/             # Chat exports
 ├── sources/           # Cached sources
+│   └── chats/         # Chat exports
 └── .hippo/            # App internals
     ├── graph.json     # Derived graph
     ├── graph.html     # Visualization

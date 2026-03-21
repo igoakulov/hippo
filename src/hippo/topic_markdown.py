@@ -20,6 +20,7 @@ class Topic:
     parent: str = ""
     related: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    word_count: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -33,6 +34,7 @@ class Topic:
             "parent": self.parent,
             "related": self.related,
             "sources": self.sources,
+            "word_count": self.word_count,
         }
 
     @staticmethod
@@ -48,6 +50,7 @@ class Topic:
             parent=data.get("parent", ""),
             related=data.get("related", []),
             sources=data.get("sources", []),
+            word_count=data.get("word_count", 0),
         )
 
 

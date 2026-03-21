@@ -29,7 +29,9 @@ class TestValidationErrors(unittest.TestCase):
             result = build_graph()
 
             errors = [
-                e for e in result.validation_errors if e.message == "Duplicate topic ID"
+                e
+                for e in result.validation_errors
+                if e.message.startswith("Duplicate topic id:")
             ]
             self.assertGreaterEqual(len(errors), 1)
 
@@ -47,7 +49,7 @@ class TestValidationErrors(unittest.TestCase):
             error = result.validation_errors[0]
             self.assertEqual(error.topic_id, "topic-x")
             self.assertEqual(error.filename, "topic-x.md")
-            self.assertEqual(error.message, "Missing required field: id")
+            self.assertEqual(error.message, "Missing topic id")
 
     def test_unparseable_frontmatter_returns_validation_error(self):
         with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
@@ -91,7 +93,7 @@ class TestValidationWarnings(unittest.TestCase):
             self.assertEqual(len(issues), 1)
             self.assertEqual(issues[0].topic_id, "topic-x")
             self.assertEqual(issues[0].filename, "topic-x.md")
-            self.assertEqual(issues[0].message, "No sources in metadata")
+            self.assertEqual(issues[0].message, "No sources")
 
     def test_no_parent_returns_clean_issue(self):
         with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
@@ -107,7 +109,7 @@ class TestValidationWarnings(unittest.TestCase):
             self.assertEqual(len(issues), 1)
             self.assertEqual(issues[0].topic_id, "orphan-topic")
             self.assertEqual(issues[0].filename, "orphan-topic.md")
-            self.assertEqual(issues[0].message, "No parent in metadata (root topic)")
+            self.assertEqual(issues[0].message, "No parent")
 
     def test_orphan_parent_returns_clean_issue(self):
         with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
@@ -124,7 +126,7 @@ class TestValidationWarnings(unittest.TestCase):
             self.assertEqual(issues[0].topic_id, "child")
             self.assertEqual(issues[0].filename, "child.md")
             self.assertIn("nonexistent", issues[0].message)
-            self.assertIn("does not exist", issues[0].message)
+            self.assertIn("Parent not found:", issues[0].message)
 
     def test_no_frontmatter_returns_issues(self):
         with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
@@ -155,7 +157,7 @@ class TestValidationWarnings(unittest.TestCase):
 
             issues = [i for i in result.clean_issues if i.issue_type == "empty_body"]
             self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].message, "No content (empty body)")
+            self.assertEqual(issues[0].message, "Empty body")
 
     def test_unknown_progress_returns_clean_issue(self):
         with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
@@ -171,9 +173,7 @@ class TestValidationWarnings(unittest.TestCase):
                 i for i in result.clean_issues if i.issue_type == "unknown_progress"
             ]
             self.assertEqual(len(issues), 1)
-            self.assertEqual(
-                issues[0].message, "Unknown progress value 'invalid-value' in metadata"
-            )
+            self.assertEqual(issues[0].message, "Unknown progress: invalid-value")
 
 
 class TestBuildResultStructure(unittest.TestCase):

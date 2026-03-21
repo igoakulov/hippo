@@ -30,3 +30,15 @@ def get_graph_path() -> Path:
 
 def get_clusters_path() -> Path:
     return HIPPO_DIR / "clusters.json"
+
+
+def get_chats_dir() -> Path:
+    return VAULT_DIR / "sources" / "chats"
+
+
+def get_chats_logs_dir() -> Path:
+    return get_hippo_dir() / "logs" / "chatgpt"
+
+
+def get_chat_log_path(timestamp: str) -> Path:
+    return get_chats_logs_dir() / f"ingest_{timestamp}.json"

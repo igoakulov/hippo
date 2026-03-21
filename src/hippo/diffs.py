@@ -66,14 +66,12 @@ def _delta_str(old: int, new: int) -> str:
 def compute_diff(
     old_graph: dict | None,
     new_graph: dict,
-    old_word_counts: dict[str, int] | None = None,
 ) -> Diff:
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
     old_topics = {
         t["id"]: t for t in (old_graph.get("topics", []) if old_graph else [])
     }
     new_topics = {t["id"]: t for t in new_graph.get("topics", [])}
-    new_word_counts = new_graph.get("word_counts", {})
 
     topics_added: list[dict] = []
     topics_deleted: list[str] = []
@@ -132,8 +130,8 @@ def compute_diff(
             if changed:
                 topics_metadata_changed[topic_id] = changed
 
-            old_wc = (old_word_counts or {}).get(topic_id, 0)
-            new_wc = new_word_counts.get(topic_id, 0)
+            old_wc = old_topics.get(topic_id, {}).get("word_count", 0)
+            new_wc = new_topic.get("word_count", 0)
             if old_wc != new_wc:
                 topics_content_changed[topic_id] = {
                     "old": old_wc,

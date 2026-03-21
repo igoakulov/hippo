@@ -51,9 +51,12 @@ def init_vault(vault_path: Path) -> None:
     (vault_path / "chats").mkdir(parents=True, exist_ok=True)
     (vault_path / "sources").mkdir(parents=True, exist_ok=True)
     (vault_path / "sources/x_posts").mkdir(parents=True, exist_ok=True)
+    (vault_path / "sources/chats").mkdir(parents=True, exist_ok=True)
     (vault_path / ".hippo").mkdir(parents=True, exist_ok=True)
     (vault_path / ".hippo/backups").mkdir(parents=True, exist_ok=True)
     (vault_path / ".hippo/diffs").mkdir(parents=True, exist_ok=True)
+    (vault_path / ".hippo/logs").mkdir(parents=True, exist_ok=True)
+    (vault_path / ".hippo/logs/chatgpt").mkdir(parents=True, exist_ok=True)
 
     agents_content = """---
 id: AGENTS

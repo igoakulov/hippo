@@ -1,9 +1,9 @@
 import json
-import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 from hippo.directories import get_backups_dir, get_graph_path
+from hippo.graph_builder import ValidationError
 
 DEFAULT_RETENTION = 20
 
@@ -49,12 +49,62 @@ def create_backup(result) -> Path:
     return backup_path
 
 
+def validate_backup(timestamp: str) -> list[ValidationError]:
+    errors: list[ValidationError] = []
+    backups_dir = get_backups_dir()
+    backup_path = backups_dir / f"graph_backup_{timestamp}.json"
+
+    if not backup_path.exists():
+        errors.append(
+            ValidationError(
+                topic_id="backup",
+                filename="backup",
+                message=f"Backup not found: {timestamp}",
+            )
+        )
+        return errors
+
+    try:
+        backup_data = json.loads(backup_path.read_text())
+    except json.JSONDecodeError:
+        errors.append(
+            ValidationError(
+                topic_id="backup",
+                filename="backup",
+                message="Backup file is corrupted",
+            )
+        )
+        return errors
+
+    seen_ids: set[str] = set()
+    for topic in backup_data.get("topics", []):
+        topic_id = topic.get("id")
+        if not topic_id:
+            errors.append(
+                ValidationError(
+                    topic_id="backup",
+                    filename="backup",
+                    message="Missing topic id",
+                )
+            )
+        elif topic_id in seen_ids:
+            errors.append(
+                ValidationError(
+                    topic_id=topic_id,
+                    filename="backup",
+                    message=f"Duplicate topic id: {topic_id}",
+                )
+            )
+        seen_ids.add(topic_id)
+
+    return errors
+
+
 def restore_backup(timestamp: str) -> bool:
     backups_dir = get_backups_dir()
     backup_path = backups_dir / f"graph_backup_{timestamp}.json"
 
     if not backup_path.exists():
-        print(f"Backup not found: {timestamp}", file=sys.stderr)
         return False
 
     backup_data = json.loads(backup_path.read_text())

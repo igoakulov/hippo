@@ -109,53 +109,71 @@ test -f .hippo/clusters.json && echo "clusters.json exists"
 CLUSTER_COUNT=$(python3 -c "import json; print(len(json.load(open('.hippo/clusters.json'))['clusters']))")
 echo "Cluster count: $CLUSTER_COUNT"
 
-echo "=== meta --ids a (single read) ==="
-hippo meta --ids a
+echo "=== topics (summary without ids) ==="
+hippo topics
 
-echo "=== meta --ids a,b,c (multiple read) ==="
-hippo meta --ids a,b,c
+echo "=== topics --warnings ==="
+hippo topics --warnings || true
 
-echo "=== meta --ids --sync (read with pre-sync) ==="
-hippo meta --ids a --sync
+echo "=== topics --ids a (single read) ==="
+hippo topics --ids a
 
-echo "=== meta --ids nonexistent (error case) ==="
-hippo meta --ids nonexistent 2>&1 || echo "Expected error for nonexistent topic"
+echo "=== topics --ids a,b,c (multiple read) ==="
+hippo topics --ids a,b,c
 
-echo "=== meta --set single target, single field ==="
-hippo meta --ids a --set progress=completed
+echo "=== topics --ids --sync (read with pre-sync) ==="
+hippo topics --ids a --sync
 
-echo "=== meta --set multiple targets, multiple fields ==="
-hippo meta --ids b,c --set cluster=nlp progress=started sources="[https://b.com,https://c.com]"
+echo "=== topics --ids nonexistent (error case) ==="
+hippo topics --ids nonexistent 2>&1 || echo "Expected error for nonexistent topic"
 
-echo "=== meta --set --sync with multiple changes ==="
-hippo meta --ids a --set progress=new cluster=ml aliases="[alias-a-new]" --sync
+echo "=== topics --ids a --meta single field ==="
+hippo topics --ids a --meta progress=completed
+
+echo "=== topics --ids b,c --meta multiple fields ==="
+hippo topics --ids b,c --meta cluster=nlp progress=started sources="[https://b.com,https://c.com]"
+
+echo "=== topics --ids a --meta --sync with multiple changes ==="
+hippo topics --ids a --meta progress=new cluster=ml aliases="[alias-a-new]" --sync
 
 echo "=== graph (full) ==="
-hippo graph | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'topics: {len(d[\"topics\"])}, clusters: {len(d[\"clusters\"])}, word_counts: {len(d[\"word_counts\"])}')"
+hippo graph | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'topics: {len(d[\"topics\"])}, clusters: {len(d[\"clusters\"])}')"
 
 echo "=== graph --sync (pre-sync then full) ==="
-hippo graph --sync | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'topics: {len(d[\"topics\"])}')"
+hippo graph --sync | tail -n +2 | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'topics: {len(d[\"topics\"])}')"
 
 echo "=== graph --from a ==="
-hippo graph --from a
+hippo graph --from a | python3 -c "import json,sys; d=json.load(sys.stdin); print([t['id'] for t in d])"
 
 echo "=== graph --from a --depth 1 ==="
 hippo graph --from a --depth 1 | python3 -c "import json,sys; d=json.load(sys.stdin); print([t['id'] for t in d])"
 
-echo "=== graph --from a --depth 2 ==="
-hippo graph --from a --depth 2 | python3 -c "import json,sys; d=json.load(sys.stdin); print([t['id'] for t in d])"
+echo "=== graph --from b --to c (JSON output) ==="
+hippo graph --from b --to c | python3 -c "import json,sys; d=json.load(sys.stdin); print(f'path length: {len(d)}, ids: {[t[\"id\"] for t in d]}')"
 
-echo "=== graph --from b --to c ==="
-hippo graph --from b --to c
+echo "=== graph --minimal (default - 4 fields) ==="
+hippo graph --minimal | python3 -c "import json,sys; d=json.load(sys.stdin); t=d['topics'][1]; print(f'fields: {list(t.keys())}')"
+
+echo "=== graph --full (standard fields) ==="
+hippo graph --full | python3 -c "import json,sys; d=json.load(sys.stdin); t=d['topics'][1]; print(f'fields: {list(t.keys())}')"
+
+echo "=== graph --full+ (includes sources and word_count) ==="
+hippo graph --full+ | python3 -c "import json,sys; d=json.load(sys.stdin); t=d['topics'][1]; print(f'has sources: {\"sources\" in t}, has word_count: {\"word_count\" in t}')"
+
+echo "=== graph --full+ --pretty (full+ with formatting) ==="
+hippo graph --full+ --pretty | head -10
+
+echo "=== graph --from b --depth 1 --full+ (traversal with fields) ==="
+hippo graph --from b --depth 1 --full+ | python3 -c "import json,sys; d=json.load(sys.stdin); t=d[0]; print(f'has sources: {\"sources\" in t}, has word_count: {\"word_count\" in t}')"
+
+echo "=== graph --from b --to c --pretty (path with formatting) ==="
+hippo graph --from b --to c --pretty | head -5
+
+echo "=== graph --from a --depth 1 --pretty (neighborhood with formatting) ==="
+hippo graph --from a --depth 1 --pretty | head -5
 
 echo "=== graph --to c (error - requires --from) ==="
 hippo graph --to c 2>&1 || echo "Expected error when --to without --from"
-
-echo "=== clean (should report orphan, no sources, no parent, no cluster) ==="
-hippo clean 2>&1 || true
-
-echo "=== clean --sync (pre-sync then check) ==="
-hippo clean --sync 2>&1 || true
 
 echo "=== backup (creates clusters.json in backup) ==="
 hippo backup
@@ -171,31 +189,31 @@ BACKUP_CLUSTERS=$(ls .hippo/backups/clusters_backup_*.json | head -1)
 echo "Backup clusters: $BACKUP_CLUSTERS"
 
 echo "=== modify topics before restore ==="
-hippo meta --ids a,b,c --set cluster=modified-cluster
+hippo topics --ids a,b,c --meta cluster=modified-cluster
 
 echo "=== restore --version ==="
 hippo restore --version "$BACKUP_TS"
 
 echo "=== verify restore (cluster should be original values) ==="
-hippo meta --ids a | grep -q "cluster: ml" && echo "Restore successful: a cluster=ml"
-hippo meta --ids c | grep -q "cluster: nlp" && echo "Restore successful: c cluster=nlp"
+hippo topics --ids a | grep -q "cluster: ml" && echo "Restore successful: a cluster=ml"
+hippo topics --ids c | grep -q "cluster: nlp" && echo "Restore successful: c cluster=nlp"
 
 echo "=== verify clusters.json restored ==="
 test -f .hippo/clusters.json && echo "clusters.json exists after restore"
 python3 -c "import json; d=json.load(open('.hippo/clusters.json')); ids=[c['id'] for c in d['clusters']]; assert 'ml' in ids and 'nlp' in ids, f'Expected ml and nlp, got {ids}'; print('clusters.json contains ml and nlp')"
 
 echo "=== restore (most recent) ==="
-hippo meta --ids a --set cluster=restored-cluster
+hippo topics --ids a --meta cluster=restored-cluster
 hippo restore
-hippo meta --ids a | grep -q "cluster: ml" && echo "Restore successful: a cluster=ml"
+hippo topics --ids a | grep -q "cluster: ml" && echo "Restore successful: a cluster=ml"
 
-echo "=== meta --set multiple targets, reset lists ==="
-hippo meta --ids b --set aliases="[new-alias]" related="[]" sources="[]"
+echo "=== topics --ids b --meta multiple targets, reset lists ==="
+hippo topics --ids b --meta aliases="[new-alias]" related="[]" sources="[]"
 
 echo "=== verify updated b ==="
-hippo meta --ids b
+hippo topics --ids b
 
-echo "=== meta --set cluster customization survives sync ==="
+echo "=== topics --meta cluster customization survives sync ==="
 echo "=== modify clusters.json manually ==="
 python3 -c "
 import json
@@ -240,5 +258,11 @@ for c in d['clusters']:
         assert c['title'] == 'Rl', f'Expected Rl, got {c[\"title\"]}'
         print(f'rl auto-assigned: {c[\"title\"]} / {c[\"color\"]}')
 "
+
+echo "=== sources ==="
+hippo sources || true
+
+echo "=== sources --warnings ==="
+hippo sources --warnings || true
 
 echo "=== All tests passed ==="
