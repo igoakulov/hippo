@@ -2,7 +2,7 @@ import argparse
 import sys
 
 from hippo.cli.utils import _count_connections, _print_errors, _print_warnings
-from hippo.graph_builder import sync as graph_sync
+from hippo.graph import sync as graph_sync
 
 
 def cmd_sync(args: argparse.Namespace) -> None:

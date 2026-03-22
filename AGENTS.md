@@ -109,7 +109,7 @@ Before write operations:
 - Summary: `Total sources: N chats, M x_posts, K urls, X removed, Y warnings`
 - With `--warnings`: Show orphan source warnings
 
-**Ingest:** `hippo chatgpt --path <file> [--from <datetime>] [--till <datetime>] [--titles <titles>]`
+**Ingest:** `hippo sources --ingest chatgpt --paths <path>... [--from <datetime>] [--till <datetime>] [--titles <titles>]`
 - Ingest ChatGPT exports
 
 **Graph:** `hippo graph [--from <id>] [--to <id>] [--depth N] [--sync] [--warnings] [--pretty] [--minimal] [--full] [--full+]`
@@ -172,4 +172,4 @@ field: value
 - `docs/prd.md` - Full requirements
 - `docs/skill.md` - Agent workflow instructions
 - `docs/tasks.md` - Implementation progress and task list
-- `docs/refactor.md` - Implementation plan
+- `docs/roadmap.md` - Future enhancements and design decisions

@@ -9,7 +9,9 @@ clean:
 	find . -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	rm -rf .hippo/ sources/ topics/
+	rm -rf .hippo/
+	find . -type d -name 'topics' ! -path './src/*' -exec rm -rf {} + 2>/dev/null || true
+	find . -type d -name 'sources' ! -path './src/*' ! -path './docs/*' -exec rm -rf {} + 2>/dev/null || true
 
 lint:
 	uv run ruff check src/ tests/

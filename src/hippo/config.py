@@ -48,7 +48,6 @@ def init_vault(vault_path: Path) -> None:
 
     vault_path.mkdir(parents=True, exist_ok=True)
     (vault_path / "topics").mkdir(parents=True, exist_ok=True)
-    (vault_path / "chats").mkdir(parents=True, exist_ok=True)
     (vault_path / "sources").mkdir(parents=True, exist_ok=True)
     (vault_path / "sources/x_posts").mkdir(parents=True, exist_ok=True)
     (vault_path / "sources/chats").mkdir(parents=True, exist_ok=True)
@@ -101,8 +100,8 @@ Your notes here...
 ## Quick Commands
 
 - List topics: `ls topics/`
-- Get metadata: `hippo meta --ids <id>`
-- Set metadata: `hippo meta --ids <id> --set field=value`
+- Get metadata: `hippo topics --ids <id>`
+- Set metadata: `hippo topics --ids <id> --meta field=value`
 - Search: `grep "keyword" topics/*.md`
 - Graph: `hippo graph --from <id> --depth N`
 """

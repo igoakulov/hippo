@@ -3,7 +3,7 @@ import sys
 
 from hippo.cli.utils import _count_connections, _print_errors, _print_warnings
 from hippo.backup import create_backup, list_backups, restore_backup, validate_backup
-from hippo.graph_builder import sync as graph_sync
+from hippo.graph import sync as graph_sync
 
 
 def cmd_backup(args: argparse.Namespace) -> None:

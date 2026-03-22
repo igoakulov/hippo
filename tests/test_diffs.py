@@ -1,7 +1,7 @@
 """Tests for diff computation: topic/connection changes, content word counts."""
 
 import unittest
-from hippo.diffs import Diff, compute_diff, _delta_str
+from hippo.graph.diffs import Diff, compute_diff, _delta_str
 
 
 class TestDiffs(unittest.TestCase):

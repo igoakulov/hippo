@@ -5,7 +5,7 @@ from collections import deque
 
 from hippo.cli.utils import _count_connections, _print_errors, _print_warnings
 from hippo.directories import get_graph_path
-from hippo.graph_builder import sync as graph_sync
+from hippo.graph import sync as graph_sync
 
 MINIMAL_FIELDS = frozenset({"id", "cluster", "parent", "related"})
 FULL_FIELDS = frozenset(

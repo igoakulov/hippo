@@ -39,10 +39,10 @@ ENV/
 Thumbs.db
 
 # Project specific
-docs/
-topics/
-sources/
-.hippo/
+/docs
+/sources
+/topics
+/.hippo
 *.log
 
 # Backup files

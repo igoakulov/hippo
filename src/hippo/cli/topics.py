@@ -7,8 +7,8 @@ from hippo.cli.utils import (
     _print_errors,
     _print_warnings,
 )
-from hippo.graph_builder import build_graph, sync as graph_sync, ValidationError
-from hippo.topic_markdown import update_frontmatter, get_frontmatter
+from hippo.graph import build_graph, sync as graph_sync, ValidationError
+from hippo.topics import update_frontmatter, get_frontmatter
 
 
 def cmd_topics(args: argparse.Namespace) -> None:

@@ -3,12 +3,12 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from hippo.graph_builder import build_graph, VALID_PROGRESS_VALUES
+from hippo.graph import build_graph, VALID_PROGRESS_VALUES
 
 
 class TestValidation(unittest.TestCase):
     def setUp(self):
-        self.mock_scan = patch("hippo.graph_builder.scan_topics_dir")
+        self.mock_scan = patch("hippo.graph.builder.scan_topics_dir")
 
     def test_validation_cases(self):
         cases = [

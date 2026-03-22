@@ -1,7 +1,7 @@
 [project]
 name = "hippo"
 version = "0.1.0"
-description = "Local-first knowledge graph system for agent-driven research"
+description = "Hippo is a tool for your AI agent to visualize, update and expand your personal knowledge locally on your device."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

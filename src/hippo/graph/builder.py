@@ -1,46 +1,17 @@
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 
-from hippo.archive import sync_archive_from_topics
-from hippo.clusters import infer_clusters, merge_clusters, save_clusters, Cluster
-from hippo.directories import (
-    get_graph_path,
-    VAULT_DIR,
-)
-from hippo.topic_markdown import (
-    Topic,
-    topic_from_markdown,
-    frontmatter_position,
+from hippo.directories import get_graph_path, VAULT_DIR
+from hippo.graph.cluster import infer_clusters, merge_clusters, save_clusters
+from hippo.graph.diffs import compute_diff, save_diff
+from hippo.graph.validation import BuildResult, CleanIssue, ValidationError
+from hippo.topics.topic import (
     body_has_content,
+    frontmatter_position,
     parse_frontmatter,
+    topic_from_markdown,
 )
-
-VALID_PROGRESS_VALUES = {"new", "started", "completed"}
-
-
-@dataclass
-class ValidationError:
-    topic_id: str
-    filename: str
-    message: str
-
-
-@dataclass
-class CleanIssue:
-    topic_id: str
-    filename: str
-    issue_type: str
-    message: str
-
-
-@dataclass
-class BuildResult:
-    topics: list[Topic]
-    clusters: list[Cluster]
-    validation_errors: list[ValidationError]
-    clean_issues: list[CleanIssue]
 
 
 def _count_words(body: str) -> int:
@@ -55,6 +26,8 @@ def scan_topics_dir() -> list[Path]:
 
 
 def build_graph() -> BuildResult:
+    from hippo.topics.topic import Topic
+
     validation_errors: list[ValidationError] = []
     clean_issues: list[CleanIssue] = []
     topics_dict: dict[str, Topic] = {}
@@ -150,6 +123,8 @@ def build_graph() -> BuildResult:
                     )
                 )
 
+            from hippo.graph.validation import VALID_PROGRESS_VALUES
+
             if topic.progress and topic.progress not in VALID_PROGRESS_VALUES:
                 clean_issues.append(
                     CleanIssue(
@@ -201,9 +176,7 @@ def build_graph() -> BuildResult:
     )
 
 
-def save_graph(result: BuildResult) -> None:
-    from hippo.diffs import compute_diff, save_diff
-
+def save_graph(result: BuildResult) -> dict:
     graph_path = get_graph_path()
     graph_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -226,7 +199,11 @@ def save_graph(result: BuildResult) -> None:
     save_clusters(result.clusters)
     graph_path.write_text(json.dumps(data, indent=2))
 
-    sync_archive_from_topics([t.to_dict() for t in result.topics])
+    word_counts = {}
+    for topic in result.topics:
+        word_counts[topic.id] = topic.word_count
+
+    return word_counts
 
 
 def sync() -> BuildResult:

@@ -1,52 +1,9 @@
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 
-from hippo.directories import get_backups_dir, get_graph_path
-from hippo.graph_builder import ValidationError
-
-DEFAULT_RETENTION = 20
-
-
-def list_backups() -> list[str]:
-    backups_dir = get_backups_dir()
-    if not backups_dir.exists():
-        return []
-    backups = []
-    for path in backups_dir.glob("graph_backup_*.json"):
-        ts = path.stem.replace("graph_backup_", "")
-        backups.append(ts)
-    return sorted(backups, reverse=True)
-
-
-def create_backup(result) -> Path:
-    from hippo.graph_builder import save_graph
-    from hippo.clusters import get_clusters_path
-
-    word_counts = save_graph(result)
-
-    backups_dir = get_backups_dir()
-    backups_dir.mkdir(parents=True, exist_ok=True)
-
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S")
-    backup_path = backups_dir / f"graph_backup_{timestamp}.json"
-
-    clusters_path = get_clusters_path()
-    backup_clusters_path = backups_dir / f"clusters_backup_{timestamp}.json"
-    if clusters_path.exists():
-        backup_clusters_path.write_text(clusters_path.read_text())
-
-    backup_data = {
-        "timestamp": timestamp,
-        "topics": [t.to_dict() for t in result.topics],
-        "clusters": [c.to_dict() for c in result.clusters],
-        "word_counts": word_counts,
-    }
-    backup_path.write_text(json.dumps(backup_data, indent=2))
-
-    _prune_backups()
-
-    return backup_path
+from hippo.directories import get_backups_dir, get_graph_path, get_topic_path
+from hippo.graph.cluster import get_clusters_path
+from hippo.graph.validation import ValidationError
 
 
 def validate_backup(timestamp: str) -> list[ValidationError]:
@@ -118,12 +75,13 @@ def restore_backup(timestamp: str) -> bool:
     graph_path.write_text(json.dumps(graph_data, indent=2))
 
     backup_clusters_path = backups_dir / f"clusters_backup_{timestamp}.json"
-    from hippo.clusters import get_clusters_path, Cluster
 
     clusters_path = get_clusters_path()
     if backup_clusters_path.exists():
         clusters_path.write_text(backup_clusters_path.read_text())
     else:
+        from hippo.models import Cluster
+
         clusters = [Cluster.from_dict(c) for c in backup_data.get("clusters", [])]
         clusters_path.write_text(
             json.dumps({"clusters": [c.to_dict() for c in clusters]}, indent=2)
@@ -137,7 +95,7 @@ def restore_backup(timestamp: str) -> bool:
 
 
 def _restore_topic_frontmatter(topic_id: str, data: dict) -> None:
-    from hippo.directories import get_topic_path
+    from hippo.topics.topic import get_frontmatter_order
 
     path = get_topic_path(topic_id)
     if not path.exists():
@@ -188,15 +146,3 @@ def _restore_topic_frontmatter(topic_id: str, data: dict) -> None:
             body = parts[2]
 
     path.write_text("\n".join(lines) + "\n" + body)
-
-
-def _prune_backups(retention: int = DEFAULT_RETENTION) -> None:
-    backups_dir = get_backups_dir()
-    backups = sorted(
-        backups_dir.glob("graph_backup_*.json"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-
-    for old_backup in backups[retention:]:
-        old_backup.unlink()

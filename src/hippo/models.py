@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 
-from hippo.topic_markdown import Topic
+from hippo.topics.topic import Topic
 
 
 @dataclass
