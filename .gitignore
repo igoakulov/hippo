@@ -40,6 +40,9 @@ Thumbs.db
 
 # Project specific
 docs/
+topics/
+sources/
+.hippo/
 *.log
 
 # Backup files

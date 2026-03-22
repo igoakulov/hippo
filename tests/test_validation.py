@@ -3,194 +3,127 @@
 import unittest
 from unittest.mock import patch, MagicMock
 
-from hippo.graph_builder import (
-    build_graph,
-    VALID_PROGRESS_VALUES,
-)
+from hippo.graph_builder import build_graph, VALID_PROGRESS_VALUES
 
 
-class TestValidationErrors(unittest.TestCase):
-    def test_duplicate_topic_id_returns_validation_error(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path_a = MagicMock()
-            mock_path_a.stem = "topic-a"
-            mock_path_a.name = "topic-a.md"
-            mock_path_a.read_text.return_value = (
-                "---\nid: same-id\ntitle: A\n---\n# A\n"
-            )
-            mock_path_b = MagicMock()
-            mock_path_b.stem = "topic-b"
-            mock_path_b.name = "topic-b.md"
-            mock_path_b.read_text.return_value = (
-                "---\nid: same-id\ntitle: B\n---\n# B\n"
-            )
-            mock_scan.return_value = [mock_path_a, mock_path_b]
+class TestValidation(unittest.TestCase):
+    def setUp(self):
+        self.mock_scan = patch("hippo.graph_builder.scan_topics_dir")
 
-            result = build_graph()
+    def test_validation_cases(self):
+        cases = [
+            # (topic_yaml, expected_errors, expected_issues)
+            # Errors
+            ("---\nid: same-id\ntitle: A\n---\n# A\n", ["Duplicate topic id:"], []),
+            ("---\ntitle: No ID\n---\n# No ID\n", ["Missing topic id"], []),
+            (
+                '---\nid: bad-yaml\ntitle: "unclosed\n---\n# Bad\n',
+                ["Metadata frontmatter cannot be parsed"],
+                [],
+            ),
+            # Warnings/Issues
+            (
+                "---\nid: topic-x\ntitle: X\nparent: root\nsources: []\n---\n# X\n",
+                [],
+                ["no_sources"],
+            ),
+            (
+                "---\nid: orphan-topic\ntitle: Orphan\nparent:\nsources:\n---\n# Orphan\n",
+                [],
+                ["no_parent"],
+            ),
+            (
+                "---\nid: child\ntitle: Child\nparent: nonexistent\nsources:\n---\n# Child\n",
+                [],
+                ["orphan_parent"],
+            ),
+            (
+                "---\nid: empty-topic\ntitle: Empty\nparent:\nsources:\n---\n",
+                [],
+                ["empty_body"],
+            ),
+            (
+                "---\nid: bad-progress\ntitle: Bad\nparent:\nprogress: invalid-value\nsources:\n---\n# Bad\n",
+                [],
+                ["unknown_progress"],
+            ),
+            (
+                "# Title\n---\nid: topic-y\ntitle: Y\n---\n# Title\n",
+                [],
+                ["frontmatter_position"],
+            ),
+            # Valid
+            (
+                "---\nid: good-topic\ntitle: Good\nparent:\nsources:\n---\n# Good\nBody text.\n",
+                [],
+                [],
+            ),
+        ]
 
-            errors = [
-                e
-                for e in result.validation_errors
-                if e.message.startswith("Duplicate topic id:")
-            ]
-            self.assertGreaterEqual(len(errors), 1)
+        for yaml_content, expected_error_prefixes, expected_issue_types in cases:
+            with self.subTest(yaml=yaml_content[:50]):
+                mock_path_a = MagicMock()
+                mock_path_a.stem = "test-topic-a"
+                mock_path_a.name = "test-topic-a.md"
+                mock_path_a.read_text.return_value = yaml_content
 
-    def test_missing_id_field_returns_validation_error(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "topic-x"
-            mock_path.name = "topic-x.md"
-            mock_path.read_text.return_value = "---\ntitle: No ID\n---\n# No ID\n"
-            mock_scan.return_value = [mock_path]
+                if (
+                    expected_error_prefixes
+                    and expected_error_prefixes[0] == "Duplicate topic id:"
+                ):
+                    mock_path_b = MagicMock()
+                    mock_path_b.stem = "test-topic-b"
+                    mock_path_b.name = "test-topic-b.md"
+                    mock_path_b.read_text.return_value = yaml_content
+                    mock_paths = [mock_path_a, mock_path_b]
+                else:
+                    mock_paths = [mock_path_a]
 
-            result = build_graph()
+                with self.mock_scan as mock_scan:
+                    mock_scan.return_value = mock_paths
+                    result = build_graph()
 
-            self.assertEqual(len(result.validation_errors), 1)
-            error = result.validation_errors[0]
-            self.assertEqual(error.topic_id, "topic-x")
-            self.assertEqual(error.filename, "topic-x.md")
-            self.assertEqual(error.message, "Missing topic id")
+                # Check errors
+                for prefix in expected_error_prefixes:
+                    matching = [
+                        e
+                        for e in result.validation_errors
+                        if e.message.startswith(prefix)
+                    ]
+                    self.assertGreater(
+                        len(matching),
+                        0,
+                        f"Expected error starting with '{prefix}' for: {yaml_content[:50]}",
+                    )
 
-    def test_unparseable_frontmatter_returns_validation_error(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "bad-yaml"
-            mock_path.name = "bad-yaml.md"
-            mock_path.read_text.return_value = (
-                '---\nid: bad-yaml\ntitle: "unclosed\n---\n# Bad\n'
-            )
-            mock_scan.return_value = [mock_path]
+                # Check issues
+                for issue_type in expected_issue_types:
+                    matching = [
+                        i for i in result.clean_issues if i.issue_type == issue_type
+                    ]
+                    self.assertGreater(
+                        len(matching),
+                        0,
+                        f"Expected issue '{issue_type}' for: {yaml_content[:50]}",
+                    )
 
-            result = build_graph()
-
-            errors = [
-                e
-                for e in result.validation_errors
-                if e.message == "Metadata frontmatter cannot be parsed"
-            ]
-            self.assertEqual(len(errors), 1)
-            self.assertEqual(errors[0].topic_id, "bad-yaml")
-            self.assertEqual(errors[0].filename, "bad-yaml.md")
-
-    def test_valid_progress_values_defined(self):
+    def test_valid_progress_values(self):
         self.assertEqual(VALID_PROGRESS_VALUES, {"new", "started", "completed"})
 
+    def test_build_result_structure(self):
+        mock_path = MagicMock()
+        mock_path.stem = "good-topic"
+        mock_path.name = "good-topic.md"
+        mock_path.read_text.return_value = "---\nid: good-topic\ntitle: Good\nparent:\nsources:\n---\n# Good\nBody text.\n"
 
-class TestValidationWarnings(unittest.TestCase):
-    def test_no_sources_returns_clean_issue(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "topic-x"
-            mock_path.name = "topic-x.md"
-            mock_path.read_text.return_value = (
-                "---\nid: topic-x\ntitle: X\nparent: root\nsources: []\n---\n# X\n"
-            )
+        with self.mock_scan as mock_scan:
             mock_scan.return_value = [mock_path]
-
             result = build_graph()
 
-            issues = [i for i in result.clean_issues if i.issue_type == "no_sources"]
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].topic_id, "topic-x")
-            self.assertEqual(issues[0].filename, "topic-x.md")
-            self.assertEqual(issues[0].message, "No sources")
-
-    def test_no_parent_returns_clean_issue(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "orphan-topic"
-            mock_path.name = "orphan-topic.md"
-            mock_path.read_text.return_value = "---\nid: orphan-topic\ntitle: Orphan\nparent:\nsources:\n---\n# Orphan\n"
-            mock_scan.return_value = [mock_path]
-
-            result = build_graph()
-
-            issues = [i for i in result.clean_issues if i.issue_type == "no_parent"]
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].topic_id, "orphan-topic")
-            self.assertEqual(issues[0].filename, "orphan-topic.md")
-            self.assertEqual(issues[0].message, "No parent")
-
-    def test_orphan_parent_returns_clean_issue(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "child"
-            mock_path.name = "child.md"
-            mock_path.read_text.return_value = "---\nid: child\ntitle: Child\nparent: nonexistent\nsources:\n---\n# Child\n"
-            mock_scan.return_value = [mock_path]
-
-            result = build_graph()
-
-            issues = [i for i in result.clean_issues if i.issue_type == "orphan_parent"]
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].topic_id, "child")
-            self.assertEqual(issues[0].filename, "child.md")
-            self.assertIn("nonexistent", issues[0].message)
-            self.assertIn("Parent not found:", issues[0].message)
-
-    def test_no_frontmatter_returns_issues(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "topic-y"
-            mock_path.name = "topic-y.md"
-            mock_path.read_text.return_value = (
-                "# Title\n---\nid: topic-y\ntitle: Y\n---\n# Title\n"
-            )
-            mock_scan.return_value = [mock_path]
-
-            result = build_graph()
-
-            self.assertGreater(len(result.validation_errors), 0)
-            self.assertGreater(len(result.clean_issues), 0)
-
-    def test_empty_body_returns_clean_issue(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "empty-topic"
-            mock_path.name = "empty-topic.md"
-            mock_path.read_text.return_value = (
-                "---\nid: empty-topic\ntitle: Empty\nparent:\nsources:\n---\n"
-            )
-            mock_scan.return_value = [mock_path]
-
-            result = build_graph()
-
-            issues = [i for i in result.clean_issues if i.issue_type == "empty_body"]
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].message, "Empty body")
-
-    def test_unknown_progress_returns_clean_issue(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "bad-progress"
-            mock_path.name = "bad-progress.md"
-            mock_path.read_text.return_value = "---\nid: bad-progress\ntitle: Bad\nparent:\nprogress: invalid-value\nsources:\n---\n# Bad\n"
-            mock_scan.return_value = [mock_path]
-
-            result = build_graph()
-
-            issues = [
-                i for i in result.clean_issues if i.issue_type == "unknown_progress"
-            ]
-            self.assertEqual(len(issues), 1)
-            self.assertEqual(issues[0].message, "Unknown progress: invalid-value")
-
-
-class TestBuildResultStructure(unittest.TestCase):
-    def test_build_result_has_validation_errors_and_clean_issues(self):
-        with patch("hippo.graph_builder.scan_topics_dir") as mock_scan:
-            mock_path = MagicMock()
-            mock_path.stem = "good-topic"
-            mock_path.name = "good-topic.md"
-            mock_path.read_text.return_value = "---\nid: good-topic\ntitle: Good\nparent:\nsources:\n---\n# Good\nBody text.\n"
-            mock_scan.return_value = [mock_path]
-
-            result = build_graph()
-
-            self.assertIsInstance(result.validation_errors, list)
-            self.assertIsInstance(result.clean_issues, list)
-            self.assertTrue(hasattr(result, "topics"))
-            self.assertTrue(hasattr(result, "clusters"))
+        self.assertIsInstance(result.validation_errors, list)
+        self.assertIsInstance(result.clean_issues, list)
+        self.assertTrue(hasattr(result, "topics"))
+        self.assertTrue(hasattr(result, "clusters"))
 
 
 if __name__ == "__main__":

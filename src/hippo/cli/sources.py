@@ -12,7 +12,7 @@ from hippo.directories import (
     get_chat_log_path,
     VAULT_DIR,
 )
-from hippo.archive import get_source_stats
+from hippo.archive import add_reference, get_source_stats
 from hippo.topic_markdown import get_frontmatter
 
 
@@ -94,10 +94,11 @@ def cmd_ingest_chat(args: argparse.Namespace) -> None:
         message_to_markdown,
     )
 
-    path = Path(args.path).expanduser().resolve()
-    if not path.exists():
-        print(f"ERROR: File not found: {path}", file=sys.stderr)
-        sys.exit(1)
+    paths = [Path(p).expanduser().resolve() for p in args.paths]
+    for path in paths:
+        if not path.exists():
+            print(f"ERROR: File not found: {path}", file=sys.stderr)
+            sys.exit(1)
 
     from_time = None
     till_time = None
@@ -124,7 +125,15 @@ def cmd_ingest_chat(args: argparse.Namespace) -> None:
     if args.titles:
         titles = [t.strip() for t in args.titles.split(",") if t.strip()]
 
-    conversations = load_conversations(path)
+    conversations = []
+    path_by_conv_id: dict[str, Path] = {}
+    for path in paths:
+        convs = load_conversations(path)
+        for c in convs:
+            conv_id = c.get("conversation_id") or c.get("id", "")
+            path_by_conv_id[conv_id] = path
+        conversations.extend(convs)
+
     filtered = filter_conversations(conversations, from_time, till_time, titles)
 
     chats_dir = get_chats_dir()
@@ -183,10 +192,10 @@ def cmd_ingest_chat(args: argparse.Namespace) -> None:
             body_content = existing_body.rstrip("\n")
             if conv.messages:
                 if body_content:
-                    body_content += "\n\n---\n\n"
+                    body_content += "\n\n***\n\n"
                 for msg in conv.messages:
                     body_content += message_to_markdown(msg)
-                    body_content += "\n\n---\n\n"
+                    body_content += "\n\n***\n\n"
 
             new_fm = _build_frontmatter(
                 conv_id=conv_id,
@@ -195,15 +204,14 @@ def cmd_ingest_chat(args: argparse.Namespace) -> None:
                 updated_at=updated_at,
                 original_create_time=conv.create_time,
                 word_count=word_count,
-                source_path=str(path),
-                urls=conv.urls,
+                urls=conv.sources,
             )
             content = new_fm + "\n" + body_content.rstrip()
         else:
             word_count = compute_word_count(conv)
             content = conversation_to_markdown(
                 conv,
-                source_path=str(path),
+                source_path=None,
                 word_count=word_count,
                 created_at=created_at,
                 updated_at=updated_at,
@@ -228,6 +236,9 @@ def cmd_ingest_chat(args: argparse.Namespace) -> None:
     if log_entries:
         log_path = get_chat_log_path(ingest_timestamp)
         log_path.write_text(json.dumps(log_entries, indent=2), encoding="utf-8")
+
+    for entry in log_entries:
+        add_reference("chat", entry["output_file"], [])
 
     total_created = len(created_files)
     total_updated = len(updated_files)
@@ -286,7 +297,6 @@ def _build_frontmatter(
     updated_at: str,
     original_create_time: float,
     word_count: int,
-    source_path: str,
     urls: list[str],
 ) -> str:
     from hippo.parsers.chatgpt import format_timestamp
@@ -301,7 +311,6 @@ def _build_frontmatter(
     )
     lines.append(f"word_count: {word_count}")
     lines.append("sources:")
-    lines.append(f"  - {source_path}")
     for url in urls:
         lines.append(f"  - {url}")
     lines.append("---")

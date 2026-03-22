@@ -103,7 +103,9 @@ def main() -> None:
         choices=["chatgpt"],
         help="Ingest source (e.g., chatgpt)",
     )
-    sources_parser.add_argument("--path", help="Path to conversations.json or archive")
+    sources_parser.add_argument(
+        "--paths", nargs="+", help="Path(s) to conversations.json files"
+    )
     sources_parser.add_argument(
         "--from", dest="from_datetime", help="Start datetime (ISO 8601)"
     )

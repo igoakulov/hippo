@@ -21,7 +21,7 @@ hippo graph --from <id> --depth N # Traverse N levels
 hippo graph --from <id> --to <id2> # Find path
 hippo graph --sync                  # Sync before viewing
 hippo sources                       # View source stats
-hippo chatgpt --path <file>       # Ingest ChatGPT exports
+hippo sources --ingest chatgpt --paths <path...>  # Ingest ChatGPT exports
 hippo backup                        # Create backup
 hippo restore                       # Restore (most recent)
 hippo restore --version <ts>        # Restore specific backup
@@ -70,5 +70,7 @@ vault/
     ├── clusters.json  # Cluster colors and titles
     ├── archive.json   # Source references
     ├── backups/       # Rolling backups
-    └── diffs/         # Change logs
+    ├── diffs/         # Change logs
+    └── logs/          # Ingest logs
+        └── chatgpt/  # ChatGPT ingest logs
 ```

@@ -4,147 +4,156 @@ import unittest
 from hippo.diffs import Diff, compute_diff, _delta_str
 
 
-class TestDeltaStr(unittest.TestCase):
-    def test_positive_delta_prefixed_plus(self):
-        self.assertEqual(_delta_str(10, 25), "+15")
-
-    def test_negative_delta_plain(self):
-        self.assertEqual(_delta_str(25, 10), "-15")
-
-    def test_zero_delta_plain(self):
-        self.assertEqual(_delta_str(5, 5), "0")
-
-
-class TestComputeDiff(unittest.TestCase):
-    def test_new_topic_marked_as_added(self):
-        old = None
-        new = {"topics": [{"id": "a", "title": "A", "parent": ""}]}
-
-        diff = compute_diff(old, new)
-
-        self.assertEqual(diff.topics_added[0]["id"], "a")
-        self.assertEqual(diff.topics_deleted, [])
-
-    def test_deleted_topic_marked_as_deleted(self):
-        old = {"topics": [{"id": "a", "title": "A", "parent": ""}]}
-        new = {"topics": []}
-
-        diff = compute_diff(old, new)
-
-        self.assertEqual(diff.topics_deleted, ["a"])
-        self.assertEqual(diff.topics_added, [])
-
-    def test_parent_change_recorded_as_metadata_change(self):
-        old = {
-            "topics": [{"id": "a", "title": "A", "parent": "root", "word_count": 0}],
-        }
-        new = {
-            "topics": [
-                {"id": "a", "title": "A", "parent": "newparent", "word_count": 0}
-            ],
-        }
-
-        diff = compute_diff(old, new)
-
-        self.assertIn("a", diff.topics_metadata_changed)
-        self.assertEqual(diff.topics_metadata_changed["a"]["parent"]["old"], "root")
-        self.assertEqual(
-            diff.topics_metadata_changed["a"]["parent"]["new"], "newparent"
-        )
-
-    def test_parent_change_records_connection_deleted_and_added(self):
-        old = {
-            "topics": [{"id": "a", "title": "A", "parent": "root", "word_count": 0}],
-        }
-        new = {
-            "topics": [
-                {"id": "a", "title": "A", "parent": "newparent", "word_count": 0}
-            ],
-        }
-
-        diff = compute_diff(old, new)
-
-        added_conns = [
-            (c["source"], c["target"], c["type"]) for c in diff.connections_added
+class TestDiffs(unittest.TestCase):
+    def test_delta_str_cases(self):
+        cases = [
+            (10, 25, "+15", "positive delta"),
+            (25, 10, "-15", "negative delta"),
+            (5, 5, "0", "zero delta"),
         ]
-        deleted_conns = [
-            (c["source"], c["target"], c["type"]) for c in diff.connections_deleted
+        for old, new, expected, desc in cases:
+            self.assertEqual(_delta_str(old, new), expected, f"Failed: {desc}")
+
+    def test_compute_diff_cases(self):
+        cases = [
+            # (old, new, description)
+            (None, {"topics": [{"id": "a", "title": "A", "parent": ""}]}, "new topic"),
+            (
+                {"topics": [{"id": "a", "title": "A", "parent": ""}]},
+                {"topics": []},
+                "deleted topic",
+            ),
+            (
+                {
+                    "topics": [
+                        {"id": "a", "title": "A", "parent": "root", "word_count": 0}
+                    ]
+                },
+                {
+                    "topics": [
+                        {
+                            "id": "a",
+                            "title": "A",
+                            "parent": "newparent",
+                            "word_count": 0,
+                        }
+                    ]
+                },
+                "parent change",
+            ),
+            (
+                {
+                    "topics": [
+                        {
+                            "id": "a",
+                            "title": "A",
+                            "related": ["x", "y"],
+                            "word_count": 0,
+                        }
+                    ]
+                },
+                {
+                    "topics": [
+                        {
+                            "id": "a",
+                            "title": "A",
+                            "related": ["x", "z"],
+                            "word_count": 0,
+                        }
+                    ]
+                },
+                "related change",
+            ),
+            (
+                {"topics": [{"id": "a", "title": "A", "word_count": 10}]},
+                {"topics": [{"id": "a", "title": "A", "word_count": 30}]},
+                "word count change",
+            ),
+            (
+                {"topics": [{"id": "a", "title": "A", "parent": "", "word_count": 5}]},
+                {"topics": [{"id": "a", "title": "A", "parent": "", "word_count": 5}]},
+                "no change",
+            ),
+            (
+                {
+                    "topics": [
+                        {"id": "a", "title": "A", "cluster": "ml", "word_count": 0}
+                    ]
+                },
+                {
+                    "topics": [
+                        {"id": "a", "title": "A", "cluster": "nlp", "word_count": 0}
+                    ]
+                },
+                "cluster change",
+            ),
         ]
-        self.assertIn(("a", "root", "parent"), deleted_conns)
-        self.assertIn(("a", "newparent", "parent"), added_conns)
 
-    def test_related_change_records_connections(self):
-        old = {
-            "topics": [
-                {"id": "a", "title": "A", "related": ["x", "y"], "word_count": 0}
-            ],
-        }
-        new = {
-            "topics": [
-                {"id": "a", "title": "A", "related": ["x", "z"], "word_count": 0}
-            ],
-        }
+        for old, new, desc in cases:
+            with self.subTest(desc=desc):
+                diff = compute_diff(old, new)
 
-        diff = compute_diff(old, new)
+                if desc == "new topic":
+                    self.assertEqual(diff.topics_added[0]["id"], "a")
+                    self.assertEqual(diff.topics_deleted, [])
+                elif desc == "deleted topic":
+                    self.assertEqual(diff.topics_deleted, ["a"])
+                    self.assertEqual(diff.topics_added, [])
+                elif desc == "parent change":
+                    self.assertIn("a", diff.topics_metadata_changed)
+                    self.assertEqual(
+                        diff.topics_metadata_changed["a"]["parent"]["old"], "root"
+                    )
+                    self.assertEqual(
+                        diff.topics_metadata_changed["a"]["parent"]["new"], "newparent"
+                    )
+                    # Also check connections
+                    added = [
+                        (c["source"], c["target"], c["type"])
+                        for c in diff.connections_added
+                    ]
+                    deleted = [
+                        (c["source"], c["target"], c["type"])
+                        for c in diff.connections_deleted
+                    ]
+                    self.assertIn(("a", "root", "parent"), deleted)
+                    self.assertIn(("a", "newparent", "parent"), added)
+                elif desc == "related change":
+                    added = [
+                        (c["source"], c["target"], c["type"])
+                        for c in diff.connections_added
+                    ]
+                    deleted = [
+                        (c["source"], c["target"], c["type"])
+                        for c in diff.connections_deleted
+                    ]
+                    self.assertIn(("a", "y", "related"), deleted)
+                    self.assertIn(("a", "z", "related"), added)
+                elif desc == "word count change":
+                    self.assertIn("a", diff.topics_content_changed)
+                    self.assertEqual(diff.topics_content_changed["a"]["old"], 10)
+                    self.assertEqual(diff.topics_content_changed["a"]["new"], 30)
+                    self.assertEqual(diff.topics_content_changed["a"]["delta"], "+20")
+                elif desc == "no change":
+                    self.assertTrue(diff.is_empty())
+                elif desc == "cluster change":
+                    self.assertIn("a", diff.topics_metadata_changed)
+                    self.assertEqual(
+                        diff.topics_metadata_changed["a"]["cluster"]["old"], "ml"
+                    )
+                    self.assertEqual(
+                        diff.topics_metadata_changed["a"]["cluster"]["new"], "nlp"
+                    )
 
-        added_conns = [
-            (c["source"], c["target"], c["type"]) for c in diff.connections_added
-        ]
-        deleted_conns = [
-            (c["source"], c["target"], c["type"]) for c in diff.connections_deleted
-        ]
-        self.assertIn(("a", "y", "related"), deleted_conns)
-        self.assertIn(("a", "z", "related"), added_conns)
-
-    def test_word_count_change_recorded(self):
-        old = {"topics": [{"id": "a", "title": "A", "word_count": 10}]}
-        new = {"topics": [{"id": "a", "title": "A", "word_count": 30}]}
-
-        diff = compute_diff(old, new)
-
-        self.assertIn("a", diff.topics_content_changed)
-        self.assertEqual(diff.topics_content_changed["a"]["old"], 10)
-        self.assertEqual(diff.topics_content_changed["a"]["new"], 30)
-        self.assertEqual(diff.topics_content_changed["a"]["delta"], "+20")
-
-    def test_no_changes_returns_empty_diff(self):
-        old = {
-            "topics": [{"id": "a", "title": "A", "parent": "", "word_count": 5}],
-        }
-        new = {
-            "topics": [{"id": "a", "title": "A", "parent": "", "word_count": 5}],
-        }
-
-        diff = compute_diff(old, new)
-
-        self.assertTrue(diff.is_empty())
-
-    def test_cluster_change_recorded_as_metadata_change(self):
-        old = {
-            "topics": [{"id": "a", "title": "A", "cluster": "ml", "word_count": 0}],
-        }
-        new = {
-            "topics": [{"id": "a", "title": "A", "cluster": "nlp", "word_count": 0}],
-        }
-
-        diff = compute_diff(old, new)
-
-        self.assertIn("a", diff.topics_metadata_changed)
-        self.assertEqual(diff.topics_metadata_changed["a"]["cluster"]["old"], "ml")
-        self.assertEqual(diff.topics_metadata_changed["a"]["cluster"]["new"], "nlp")
-
-
-class TestDiffDataclass(unittest.TestCase):
-    def test_is_empty_true_when_all_fields_empty(self):
+    def test_diff_dataclass(self):
+        # is_empty tests
         diff = Diff(timestamp="2026-03-19T10-00-00")
         self.assertTrue(diff.is_empty())
 
-    def test_is_empty_false_when_topics_added(self):
-        diff = Diff(timestamp="2026-03-19T10-00-00")
         diff.topics_added.append({"id": "a"})
         self.assertFalse(diff.is_empty())
 
-    def test_to_dict_and_from_dict_roundtrip(self):
+        # Roundtrip test
         diff = Diff(
             timestamp="2026-03-19T10-00-00",
             topics_added=[{"id": "a"}],
